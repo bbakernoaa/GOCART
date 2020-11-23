@@ -99,16 +99,13 @@ CONTAINS
 !BOP
 ! !IROUTINE: DustEmissionFENGSHA
 
-   subroutine DustEmissionFENGSHA(radius, lradius, uradius, fraclake, gwettop, oro, ustar, drag, clay,sand, uthr, &
+   subroutine DustEmissionFENGSHA(fraclake, gwettop, oro, ustar, drag, clay,sand, uthr, &
                                   du_src, area, grav, Ch_DU1, Ch_DU2, emissions, rc )
 
 ! !USES:
    implicit NONE
 
 ! !INPUT PARAMETERS:
-   real, intent(in) :: radius(:)       ! particle radius (median value) [m]
-   real, intent(in) :: low_radius(:)       ! lower radius of particle bins [m]
-   real, intent(in) :: high_radius(:)       ! upper radius of particle bins [m]
    real, pointer, dimension(:,:), intent(in) :: fraclake ! fraction of lake [1]
    real, pointer, dimension(:,:), intent(in) :: gwettop  ! surface soil wetness [1]
    real, pointer, dimension(:,:), intent(in) :: oro      ! land-ocean-ice mask [1]
