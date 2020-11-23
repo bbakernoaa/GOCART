@@ -24,6 +24,7 @@
 ! !PUBLIC MEMBER FUNCTIONS:
 !
    public DustEmissionGOCART2G
+   public DustEmissionFENGSHA
    public DistributePointEmission
    public updatePointwiseEmissions
    public Chem_Settling2Gorig
@@ -51,7 +52,7 @@
    public SulfateChemDriver
    public get_HenrysLawCts
    public NIthermo
-   public Chem_UtilResVal 
+   public Chem_UtilResVal
    public Chem_UtilIdow
    public Chem_UtilCdow
    public Chem_BiomassDiurnal
@@ -96,24 +97,30 @@ CONTAINS
 
 !==================================================================================
 !BOP
-! !IROUTINE: DustEmissionGOCART2G
+! !IROUTINE: DustEmissionFENGSHA
 
-   subroutine DustEmissionGOCART2G(radius, fraclake, gwettop, oro, u10m, &
-                                   v10m, Ch_DU, du_src, grav, &
-                                   emissions, rc )
+   subroutine DustEmissionFENGSHA(radius, lradius, uradius, fraclake, gwettop, oro, ustar, drag, clay,sand, uthr, &
+                                  du_src, area, grav, Ch_DU1, Ch_DU2, emissions, rc )
 
 ! !USES:
    implicit NONE
 
 ! !INPUT PARAMETERS:
-   real, intent(in) :: radius(:)       ! particle radius [m]
+   real, intent(in) :: radius(:)       ! particle radius (median value) [m]
+   real, intent(in) :: low_radius(:)       ! lower radius of particle bins [m]
+   real, intent(in) :: high_radius(:)       ! upper radius of particle bins [m]
    real, pointer, dimension(:,:), intent(in) :: fraclake ! fraction of lake [1]
    real, pointer, dimension(:,:), intent(in) :: gwettop  ! surface soil wetness [1]
    real, pointer, dimension(:,:), intent(in) :: oro      ! land-ocean-ice mask [1]
-   real, pointer, dimension(:,:), intent(in) :: u10m     ! 10-meter eastward wind [m/sec]
-   real, pointer, dimension(:,:), intent(in) :: v10m     ! 10-meter northward wind [m/sec]
-   real, pointer, dimension(:,:), intent(in) :: du_src   ! dust emissions [(sec^2 m^5)/kg]
-   real, intent(in) :: Ch_DU   ! dust emission tuning coefficient [kg/(sec^2 m^5)]
+   real, pointer, dimension(:,:), intent(in) :: ustar    ! boundary layer friction velocity [m/s]
+   real, pointer, dimension(:,:), intent(in) :: du_src   ! dust emissions sediment supply map [1]
+   real, pointer, dimension(:,:), intent(in) :: drag     ! dust drag partition input map [1]
+   real, pointer, dimension(:,:), intent(in) :: uthr     ! dust threshold input map [m/s]
+   real, pointer, dimension(:,:), intent(in) :: clay     ! fractional clay content [1]
+   real, pointer, dimension(:,:), intent(in) :: sand     ! fractional sand content [1]
+   real, pointer, dimension(:,:), intent(in) :: area     ! area of the grid cell [m2]
+   real, intent(in) :: Ch_DU1   ! linear dust emission tuning coefficient [1]
+   real, intent(in) :: Ch_DU2   ! exponential dust emission tuning factor [1]
    real, intent(in) :: grav    ! gravity [m/sec^2]
 
 ! !OUTPUT PARAMETERS:
@@ -133,9 +140,13 @@ CONTAINS
    real, parameter ::  air_dens = 1.25  ! Air density = 1.25 kg m-3
    real, parameter ::  soil_density  = 2650.  ! km m-3
    real            ::  diameter         ! dust effective diameter [m]
-   real            ::  u_thresh0
-   real            ::  u_thresh
-   real            ::  w10m
+   real            ::  gwc              ! gravimetric water content [kg/kg]
+   real            ::  watermax         ! maximum water content
+   real            ::  drylimit         ! soil maximum dry limit
+   real            ::  u_thresh         ! modified wet threshold
+   real            ::  hflux            ! horizontal mass flux ratio
+   real            ::  vhflux            ! vertical to horizontal mass flux ratio [1]
+   real            ::  demis            ! total dust emission mass flux
    integer         ::  i1, i2, j1, j2, nbins
    integer         ::  dims(2)
    real, allocatable ::  emissions_(:,:)
@@ -160,46 +171,170 @@ CONTAINS
 
 !  Calculate the threshold velocity of wind erosion [m/s] for each radius
 !  for a dry soil, as in Marticorena et al. [1997].
-!  The parameterization includes the air density which is assumed 
+!  The parameterization includes the air density which is assumed
 !  = 1.25 kg m-3 to speed the calculation.  The error in air density is
 !  small compared to errors in other parameters.
 
 !print*,'DustEmiss shape(emissions) = ',shape(emissions)
+   do j = j1, j2
+      do i = i1, i2
 
-   do n = 1, nbins
-      diameter = 2. * radius(n)
+        ! cycle if not land
+        if ( oro(i,j) /= LAND ) cycle
 
-      u_thresh0 = 0.13 * sqrt(soil_density*grav*diameter/air_dens) &
-                       * sqrt(1.+6.e-7/(soil_density*grav*diameter**2.5)) &
-              / sqrt(1.928*(1331.*(100.*diameter)**1.56+0.38)**0.092 - 1.)
+        gwc = gwettop(i,j) * 1000. / (soil_density * (1. - (0.489 - 0.00126 * sand(i,j))))
 
-      emissions_(:,:) = 0.
+        ! Calculate the dry limit based on Fecan et al. [1999]
+        drylimit = 14.0 * clay(i,j) * clay(i,j) - 17.0 * clay(i,j)
 
-!     Spatially dependent part of calculation
-!     ---------------------------------------
-      do j = j1, j2
-         do i = i1, i2
-            if ( oro(i,j) /= LAND ) cycle ! only over LAND gridpoints
+        if (gwc >= drylimit) THEN
+          u_thresh = max(0, uthr(i,j) / drag(i,j) * sqrt(1 + 1.21 * (gwc - drylimit)**0.68))
+        else
+          u_thres = uthr(i,j) / drag(i,j)
+        end if
 
-            w10m = sqrt(u10m(i,j)**2.+v10m(i,j)**2.)
-!           Modify the threshold depending on soil moisture as in Ginoux et al. [2001]
-            if(gwettop(i,j) .lt. 0.5) then
-               u_thresh = amax1(0.,u_thresh0* &
-               (1.2+0.2*alog10(max(1.e-3,gwettop(i,j)))))
+        ! Calculate total vertical mass flux (note beta has units of m^-1)
+        ! vflux acts to tone down dust in areas with so few dust-sized particles that the
+        ! lofting efficiency decreases.  Otherwise, super sandy zones would be huge dust
+        ! producers, which is generally not the case.  Equation derived from wind-tunnel
+        ! experiments (see MB95).
+        if (clay(i,j) <= 0.2) then
+          vhflux = 10.0 ** (13.4 * clay(i,j) - 6.0)
+        else
+          vhflux = 2e-4
+        end if
 
-               if(w10m .gt. u_thresh) then     
-!                 Emission of dust [kg m-2 s-1]
-                  emissions_(i,j) = (1.-fraclake(i,j)) * w10m**2. * (w10m-u_thresh)
-               endif
-            endif !(gwettop(i,j) .lt. 0.5)
-         end do ! i
-      end do ! j
-      emissions = emissions + (Ch_DU * du_src * emissions_)
-    end do ! n
- 
+        !---------------------------------------------------------------------
+        ! formula of Draxler & Gillette (2001) Atmos. Environ.
+        ! F   =  K A (r/g) U* ( U*^2 - Ut*^2 )
+        !
+        ! where:
+        !     F   = vertical emission flux  [g/m**2-s]
+        !     K   = constant 2.0E-04                      [1/m]
+        !     A   = 0~3.5  mean = 2.8  (fudge factor)
+        !     U*  = friction velocity                     [m/s]
+        !     Ut* = threshold friction velocity           [m/s]
+        !
+        !--------------------------------------------------------------------
+
+        hflux = ustar(i,j) * ( ustar(i,j) * ustar(i,j) - u_thresh * u_thres)
+
+        demis =  (air_dens / grav) * hflux * vhflux
+
+        emission(i,j) = Ch_DU1 * demis * area(i,j) * ssm(i,j)**Ch_DU2
+      end do ! i
+    end do ! j
+
    rc=0
 
-   end subroutine DustEmissionGOCART2G
+ end subroutine DustEmissionFEGNSHA
+
+   !==================================================================================
+   !BOP
+   ! !IROUTINE: DustEmissionGOCART2G
+
+      subroutine DustEmissionGOCART2G(radius, fraclake, gwettop, oro, u10m, &
+                                      v10m, Ch_DU, du_src, grav, &
+                                      emissions, rc )
+
+   ! !USES:
+      implicit NONE
+
+   ! !INPUT PARAMETERS:
+      real, intent(in) :: radius(:)       ! particle radius [m]
+      real, pointer, dimension(:,:), intent(in) :: fraclake ! fraction of lake [1]
+      real, pointer, dimension(:,:), intent(in) :: gwettop  ! surface soil wetness [1]
+      real, pointer, dimension(:,:), intent(in) :: oro      ! land-ocean-ice mask [1]
+      real, pointer, dimension(:,:), intent(in) :: u10m     ! 10-meter eastward wind [m/sec]
+      real, pointer, dimension(:,:), intent(in) :: v10m     ! 10-meter northward wind [m/sec]
+      real, pointer, dimension(:,:), intent(in) :: du_src   ! dust emissions [(sec^2 m^5)/kg]
+      real, intent(in) :: Ch_DU   ! dust emission tuning coefficient [kg/(sec^2 m^5)]
+      real, intent(in) :: grav    ! gravity [m/sec^2]
+
+   ! !OUTPUT PARAMETERS:
+      real, pointer, intent(inout)  :: emissions(:,:)    ! Local emission [kg/(m^2 sec)]
+      integer, intent(out) :: rc  ! Error return code:
+
+
+   ! !DESCRIPTION: Computes the dust emissions for one time step
+   !
+   ! !REVISION HISTORY:
+   !
+   ! 11Feb2020 E.Sherman - First attempt at refactor
+   !
+
+   ! !Local Variables
+      integer         ::  i, j, n
+      real, parameter ::  air_dens = 1.25  ! Air density = 1.25 kg m-3
+      real, parameter ::  soil_density  = 2650.  ! km m-3
+      real            ::  diameter         ! dust effective diameter [m]
+      real            ::  u_thresh0
+      real            ::  u_thresh
+      real            ::  w10m
+      integer         ::  i1, i2, j1, j2, nbins
+      integer         ::  dims(2)
+      real, allocatable ::  emissions_(:,:)
+
+   !EOP
+   !-------------------------------------------------------------------------
+   !  Begin
+
+   !  Initialize local variables
+   !  --------------------------
+      emissions(:,:) = 0.
+      rc = 824
+
+   !  Get dimensions
+   !  ---------------
+      nbins = size(radius)
+      dims = shape(u10m)
+      i1 = 1; j1 = 1
+      i2 = dims(1); j2 = dims(2)
+
+      allocate(emissions_(i2,j2))
+
+   !  Calculate the threshold velocity of wind erosion [m/s] for each radius
+   !  for a dry soil, as in Marticorena et al. [1997].
+   !  The parameterization includes the air density which is assumed
+   !  = 1.25 kg m-3 to speed the calculation.  The error in air density is
+   !  small compared to errors in other parameters.
+
+   !print*,'DustEmiss shape(emissions) = ',shape(emissions)
+
+      do n = 1, nbins
+         diameter = 2. * radius(n)
+
+         u_thresh0 = 0.13 * sqrt(soil_density*grav*diameter/air_dens) &
+                          * sqrt(1.+6.e-7/(soil_density*grav*diameter**2.5)) &
+                 / sqrt(1.928*(1331.*(100.*diameter)**1.56+0.38)**0.092 - 1.)
+
+         emissions_(:,:) = 0.
+
+   !     Spatially dependent part of calculation
+   !     ---------------------------------------
+         do j = j1, j2
+            do i = i1, i2
+               if ( oro(i,j) /= LAND ) cycle ! only over LAND gridpoints
+
+               w10m = sqrt(u10m(i,j)**2.+v10m(i,j)**2.)
+   !           Modify the threshold depending on soil moisture as in Ginoux et al. [2001]
+               if(gwettop(i,j) .lt. 0.5) then
+                  u_thresh = amax1(0.,u_thresh0* &
+                  (1.2+0.2*alog10(max(1.e-3,gwettop(i,j)))))
+
+                  if(w10m .gt. u_thresh) then
+   !                 Emission of dust [kg m-2 s-1]
+                     emissions_(i,j) = (1.-fraclake(i,j)) * w10m**2. * (w10m-u_thresh)
+                  endif
+               endif !(gwettop(i,j) .lt. 0.5)
+            end do ! i
+         end do ! j
+         emissions = emissions + (Ch_DU * du_src * emissions_)
+       end do ! n
+
+      rc=0
+
+    end subroutine DustEmissionGOCART2G
 
 !==================================================================================
 !BOP
@@ -383,14 +518,14 @@ CONTAINS
    integer,    intent(in)    :: bin    ! aerosol bin index
    real,       intent(in)    :: grav   ! gravity [m/sec^2]
    real,       intent(in)    :: cdt    ! chemistry model time-step
-   real, intent(in)  :: radiusInp  ! particle radius [microns] 
+   real, intent(in)  :: radiusInp  ! particle radius [microns]
    real, intent(in)  :: rhopInp    ! soil class density [kg/m^3]
    real, dimension(:,:,:), intent(inout) :: int_qa  ! aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu   ! temperature [K]
    real, pointer, dimension(:,:,:), intent(in)  :: rhoa   ! air density [kg/m^3]
    real, pointer, dimension(:,:,:), intent(in)  :: rh     ! relative humidity [1]
    real, pointer, dimension(:,:,:), intent(in)  :: hghte  ! geopotential height [m]
-   real, pointer, dimension(:,:,:), intent(in)  :: delp   ! pressure level thickness [Pa]   
+   real, pointer, dimension(:,:,:), intent(in)  :: delp   ! pressure level thickness [Pa]
    logical, optional, intent(in)   :: correctionMaring
 
 
@@ -403,9 +538,9 @@ CONTAINS
    integer, optional, intent(out)   :: rc
 
 ! !DESCRIPTION: Gravitational settling of aerosol between vertical
-!               layers.  Assumes input radius in [m] and density (rhop) 
+!               layers.  Assumes input radius in [m] and density (rhop)
 !               in [kg m-3]. If flag is set, use the Fitzgerald 1975 (flag = 1)
-!               or Gerber 1985 (flag = 2) parameterization to update the 
+!               or Gerber 1985 (flag = 2) parameterization to update the
 !               particle radius for the calculation (local variables radius
 !               and rhop).
 !
@@ -471,7 +606,7 @@ CONTAINS
 
 !  Allocate arrays
 !  ---------------
-   allocate(dz, mold=rhoa); 
+   allocate(dz, mold=rhoa);
    allocate(dzd(i2,j2,km), vsd(i2,j2,km), qa(i2,j2,km), vsettle(i2,j2,km), qa_temp(i2,j2,km))
    allocate(cmass_before(i2,j2), cmass_after(i2,j2), qdel(i2,j2), d_p(i2,j2), &
             dpm1(i2,j2), qsrc(i2,j2))
@@ -530,7 +665,7 @@ CONTAINS
 !            Fitzgerald
              select case(flag)
              case(1)
-               if (sat >= 0.80) then 
+               if (sat >= 0.80) then
 !             if(flag .eq. 1 .and. sat .ge. 0.80) then
 !            parameterization blows up for RH > 0.995, so set that as max
 !            rh needs to be scaled 0 - 1
@@ -608,7 +743,7 @@ CONTAINS
 
 !    call pmaxmin ( 'Chem_Settling: dt', dz(i1:i2,j1:j2,1:km)/vsettle(i1:i2,j1:j2,1:km), &
 !                                        qmin, qmax, ijl, km, 0. )
- 
+
     minTime = min(minTime,qmin)
 
 !   Now, how many iterations do we need to do?
@@ -616,7 +751,7 @@ CONTAINS
          nSubSteps = 0
 !REVISIT THIS!!!
 !----------------------
-!         call mpout_log(myname,'no Settling because minTime = ', minTime ) 
+!         call mpout_log(myname,'no Settling because minTime = ', minTime )
 !---------------------
     else if(minTime .ge. cdt) then
        nSubSteps = 1
@@ -712,7 +847,7 @@ qa_temp = qa
    real, intent(in) :: grav     ! gravity [m/sec^2]
 
 ! !OUTPUT PARAMETERS:
-   real, intent(out)   :: diff_coef  ! Brownian diffusion 
+   real, intent(out)   :: diff_coef  ! Brownian diffusion
                                      ! coefficient [m2/sec]
    real, intent(out)   :: vsettle    ! Layer fall speed [m s-1]
 
@@ -789,7 +924,7 @@ qa_temp = qa
 
 !==================================================================================
 !BOP
-! !IROUTINE: Chem_SettlingSimpleOrig 
+! !IROUTINE: Chem_SettlingSimpleOrig
 
    subroutine Chem_SettlingSimpleOrig ( km, klid, flag, grav, cdt, radiusInp, rhopInp, &
                                         int_qa, tmpu, rhoa, rh, delp, hghte, &
@@ -1052,7 +1187,7 @@ qa_temp = qa
 ! !INTERFACE:
 !
 
-   subroutine DryDeposition ( km, tmpu, rhoa, hghte, oro, ustar, pblh, shflux, & 
+   subroutine DryDeposition ( km, tmpu, rhoa, hghte, oro, ustar, pblh, shflux, &
                               von_karman, cpd, grav, z0h, drydepf, rc, &
                               radius, rhop, u10m, v10m, fraclake, gwettop )
 
@@ -1069,8 +1204,8 @@ qa_temp = qa
    real, pointer, dimension(:,:), intent(in)   :: ustar   ! friction speed [m/sec]
    real, pointer, dimension(:,:), intent(in)   :: pblh    ! PBL height [m]
    real, pointer, dimension(:,:), intent(in)   :: shflux  ! sfc. sens. heat flux [W m-2]
-   real, intent(in)                :: von_karman ! Von Karman constant [unitless] 
-   real, intent(in)                :: cpd       ! thermodynamic constant, specific heat of something? 
+   real, intent(in)                :: von_karman ! Von Karman constant [unitless]
+   real, intent(in)                :: cpd       ! thermodynamic constant, specific heat of something?
    real, intent(in)                :: grav      ! gravity [m/sec^2]
    real, pointer, dimension(:,:)   :: z0h       ! rough height, sens. heat [m]
 
@@ -1258,8 +1393,8 @@ qa_temp = qa
 
 ! !INPUT PARAMETERS:
    integer, intent(in) :: i1, i2, j1, j2
-   real, intent(in) :: von_karman ! Von Karman constant [unitless] 
-   real, intent(in) :: cpd        ! thermodynamic constant, specific heat of something? 
+   real, intent(in) :: von_karman ! Von Karman constant [unitless]
+   real, intent(in) :: cpd        ! thermodynamic constant, specific heat of something?
    real, intent(in) :: grav       ! gravity [m/sec^2]
    real, dimension(i1:i2,j1:j2)  :: t         ! temperature [K]
    real, dimension(i1:i2,j1:j2)  :: rhoa      ! air density [kg/m^3]
@@ -1292,7 +1427,7 @@ qa_temp = qa
 !==================================================================================
 !BOP
 
-! !IROUTINE: WetRemovalGOCART2G 
+! !IROUTINE: WetRemovalGOCART2G
 !#if 0
    subroutine WetRemovalGOCART2G ( km, klid, n1, n2, bin_ind, cdt, aero_type, kin, grav, fwet, &
                                    aerosol, ple, tmpu, rhoa, pfllsan, pfilsan, &
@@ -1349,7 +1484,7 @@ qa_temp = qa
    real :: F, B, BT                  ! temporary variables on cloud, freq.
    real :: WASHFRAC, WASHFRAC_F_14
    real, allocatable :: fd(:,:)      ! flux across layers [kg m-2]
-   real, allocatable :: dpfli(:,:,:)  ! vertical gradient of LS ice+rain precip flux 
+   real, allocatable :: dpfli(:,:,:)  ! vertical gradient of LS ice+rain precip flux
    real, allocatable :: DC(:)        ! scavenge change in mass mixing ratio
 !   real :: c_h2o(i1:i2,j1:j2,km), cldliq(i1:i2,j1:j2,km), cldice(i1:i2,j1:j2,km)
    real, allocatable, dimension(:,:,:) :: c_h2o, cldliq, cldice
@@ -1392,7 +1527,7 @@ qa_temp = qa
 
 !  Initialize local variables
 !  --------------------------
-!  c_h2o, cldliq, and cldice are respectively intended to be the 
+!  c_h2o, cldliq, and cldice are respectively intended to be the
 !  water mixing ratio (liquid or vapor?, in or out of cloud?)
 !  cloud liquid water mixing ratio
 !  cloud ice water mixing ratio
@@ -1481,7 +1616,7 @@ qa_temp = qa
      do k = LH, km
 
 !-----------------------------------------------------------------------------
-!   (1) LARGE-SCALE RAINOUT:             
+!   (1) LARGE-SCALE RAINOUT:
 !       Tracer loss by rainout = TC0 * F * exp(-B*dt)
 !         where B = precipitation frequency,
 !               F = fraction of grid box covered by precipitating clouds.
@@ -1593,7 +1728,7 @@ qa_temp = qa
             ! Rainwater content in the grid box (Eq. 17, Jacob et al, 2000)
             PP = (PFLLSAN(i,j,k)/1000d0 + PFILSAN(i,j,k)/917d0 )*100d0 ! from kg H2O/m2/s to cm3 H2O/cm2/s
             LP = ( PP * cdt ) / ( F * delz(i,j,k)*100.d0 )  ! DZ*100.d0 in cm
-            ! Compute liquid to gas ratio for H2O2, using the appropriate 
+            ! Compute liquid to gas ratio for H2O2, using the appropriate
             ! parameters for Henry's law -- also use rainwater content Lp
             ! (Eqs. 7, 8, and Table 1, Jacob et al, 2000)
             !CALL COMPUTE_L2G( Kstar298, H298_R, tmpu(i,j,k), LP, L2G )
@@ -1655,7 +1790,7 @@ qa_temp = qa
        BT = B * Td_cv
        if (BT.gt.10.) BT = 10.               !< Avoid overflow >
 
-!      Adjust du level: 
+!      Adjust du level:
        do n = 1, nbins
 !        effRemoval = qa(n1+n-1)%fwet
         effRemoval = fwet
@@ -1734,7 +1869,7 @@ qa_temp = qa
 
 !-----------------------------------------------------------------------------
 !  (5) RE-EVAPORATION.  Assume that SO2 is re-evaporated as SO4 since it
-!      has been oxidized by H2O2 at the level above. 
+!      has been oxidized by H2O2 at the level above.
 !-----------------------------------------------------------------------------
 !     Add in the flux from above, which will be subtracted if reevaporation occurs
       if(k .gt. LH) then
@@ -1867,13 +2002,13 @@ qa_temp = qa
    real, optional, dimension(:), intent(in)    :: rlow   ! bin radii - low bounds
    real, optional, dimension(:), intent(in)    :: rup    ! bin radii - upper bounds
    real, dimension(:), intent(in)    :: channels
-!   real, pointer, dimension(:,:,:,:) :: aerosol     ! 
-   real, dimension(:,:,:,:), intent(inout) :: aerosol     ! 
+!   real, pointer, dimension(:,:,:,:) :: aerosol     !
+   real, dimension(:,:,:,:), intent(inout) :: aerosol     !
    real, intent(in) :: grav
    real, pointer, dimension(:,:,:), intent(in) :: tmpu  ! temperature [K]
    real, pointer, dimension(:,:,:), intent(in) :: rhoa  ! air density [kg/m^3]
    real, pointer, dimension(:,:,:), intent(in) :: delp  ! pressure thickness [Pa]
-   real, pointer, dimension(:,:,:), intent(in) :: rh    ! relative humidity [1] 
+   real, pointer, dimension(:,:,:), intent(in) :: rh    ! relative humidity [1]
    real, pointer, dimension(:,:,:), intent(in) :: u     ! east-west wind [m/s]
    real, pointer, dimension(:,:,:), intent(in) :: v     ! north-south wind [m/s]
 
@@ -1902,14 +2037,14 @@ qa_temp = qa
    real, optional, pointer, dimension(:,:), intent(inout)   :: angstrom  ! 470-870 nm Angstrom parameter
    integer, optional, intent(out)             :: rc        ! Error return code:
                                                  !  0 - all is well
-                                                 !  1 - 
+                                                 !  1 -
 
 ! !DESCRIPTION: Calculates some simple 2d diagnostics from the dust fields
 !
 ! !REVISION HISTORY:
 !
 !  16APR2004, Colarco
-!  11MAR2010, Nowottnick  
+!  11MAR2010, Nowottnick
 !  11AUG2020, E.Sherman - refactored to work for multiple aerosols
 
 ! !Local Variables
@@ -1926,7 +2061,7 @@ qa_temp = qa
 !EOP
 !-------------------------------------------------------------------------
 !  Begin...
- 
+
 !  Initialize local variables
 !  --------------------------
    nch = size(channels)
@@ -2221,13 +2356,13 @@ qa_temp = qa
    implicit NONE
 
 ! !INPUT/OUTPUT PARAMETERS:
-   real, dimension(:,:), intent(inout) :: deep_lakes_mask      
+   real, dimension(:,:), intent(inout) :: deep_lakes_mask
 
 ! !INPUT PARAMETERS:
    real, pointer, dimension(:,:), intent(in)   :: lats ! latitude [radians]
    real, pointer, dimension(:,:), intent(in)   :: lons ! longtitude [radians]
    real, intent(in)                       :: radToDeg
-          
+
 ! !OUTPUT PARAMETERS:
    integer, optional, intent(out) :: rc
 !EOP
@@ -2273,10 +2408,10 @@ qa_temp = qa
   implicit NONE
 
 ! !INPUT/OUTPUT PARAMETERS:
-  real, dimension(:,:), intent(inout) :: fsstemis     ! 
+  real, dimension(:,:), intent(inout) :: fsstemis     !
 
 ! !INPUT PARAMETERS:
-   integer, intent(in)                       :: sstEmisFlag  ! 1 or 2 
+   integer, intent(in)                       :: sstEmisFlag  ! 1 or 2
    real, dimension(:,:), intent(in)          :: ts  ! surface temperature (K)
 
 ! !OUTPUT PARAMETERS:
@@ -2288,7 +2423,7 @@ qa_temp = qa
 !EOP
 !-------------------------------------------------------------------------
 !  Begin...
-  
+
    fsstemis = 1.0
 
    if (sstemisFlag == 1) then          ! SST correction folowing Jaegle et al. 2011
@@ -2307,7 +2442,7 @@ qa_temp = qa
       allocate( tskin_c, mold=fsstemis )
       tskin_c  = ts - 273.15
 
-      where(tskin_c < -0.1) tskin_c = -0.1    ! temperature range (0, 36) C 
+      where(tskin_c < -0.1) tskin_c = -0.1    ! temperature range (0, 36) C
       where(tskin_c > 36.0) tskin_c = 36.0    !
 
       fsstemis = (-1.107211 -0.010681*tskin_c -0.002276*tskin_c**2 + 60.288927*1.0/(40.0 - tskin_c))
@@ -2332,7 +2467,7 @@ qa_temp = qa
    implicit NONE
 
 ! !INPUT/OUTPUT PARAMETERS:
-   real(kind=DP), dimension(:,:), intent(inout)    :: gweibull 
+   real(kind=DP), dimension(:,:), intent(inout)    :: gweibull
 
 ! !INPUT PARAMETERS:
    logical, intent(in)                    :: weibullFlag
@@ -2390,10 +2525,10 @@ qa_temp = qa
 !=====================================================================================
 
  DOUBLE PRECISION function igamma(A, X)
-!----------------------------------------------------------------------- 
+!-----------------------------------------------------------------------
 ! incomplete (upper) Gamma function
 ! \int_x^\infty t^{A-1}\exp(-t) dt
-!----------------------------------------------------------------------- 
+!-----------------------------------------------------------------------
  IMPLICIT NONE
  double precision, intent(in) ::        A
  DOUBLE PRECISION, INTENT(IN) ::      X
@@ -2470,7 +2605,7 @@ qa_temp = qa
 ! !OUTPUT PARAMETERS:
    integer, intent(out)          :: rc              ! Error return code:
                                                     !  0 - all is well
-                                                    !  1 - 
+                                                    !  1 -
 ! !Local Variables
    integer       :: ir
    real, pointer :: w(:,:)                          ! Intermediary wind speed [m s-1]
@@ -2778,8 +2913,8 @@ qa_temp = qa
    real, dimension(:,:), intent(in) :: aviation_cds_src ! Climb/Descent aircraft fuel emission [1]
    real, dimension(:,:), intent(in) :: aviation_crs_src ! Cruise aircraft fuel emission [1]
    real, dimension(:,:), intent(in) :: aviation_lto_src ! Landing/Take-off aircraft fuel emission [1]
-   real, dimension(:,:), intent(in) :: biomass_src  
-   real, dimension(:,:), intent(in) :: terpene_src 
+   real, dimension(:,:), intent(in) :: biomass_src
+   real, dimension(:,:), intent(in) :: terpene_src
    real, dimension(:,:), intent(in) :: eocant1_src  ! anthropogenic emissions
    real, dimension(:,:), intent(in) :: eocant2_src  ! anthropogenic emissions
    real, dimension(:,:), intent(in) :: oc_ship_src  ! ship emissions
@@ -2796,7 +2931,7 @@ qa_temp = qa
    real, pointer, dimension(:,:)  :: OC_emisBG  ! OC emissions, kg/m2/s
    integer, optional, intent(out) :: rc         ! Error return code:
                                                 !  0 - all is well
-                                                !  1 - 
+                                                !  1 -
    character(len=*), parameter :: myname = 'CAEmission'
 
 ! !DESCRIPTION: Updates the OC concentration with emissions every timestep
@@ -2993,9 +3128,9 @@ K_LOOP_BB: do k = km, 1, -1
 
 
 !   Update concentrations at this layer
-!   The "1" element is hydrophobic 
+!   The "1" element is hydrophobic
 !   The "2" element is hydrophilic
-!   -----------------------------------    
+!   -----------------------------------
     factor = cdt * grav / delp(:,:,k)
 
     qa_bb_(1,:,:,k) = factor * srcHydrophobic
@@ -3137,9 +3272,9 @@ K_LOOP: do k = km, 1, -1
 !    if ( maxAll .eq. 0.0 ) exit K_LOOP
 
 !   Update concentrations at this layer
-!   The "1" element is hydrophobic 
+!   The "1" element is hydrophobic
 !   The "2" element is hydrophilic
-!   -----------------------------------    
+!   -----------------------------------
     factor = cdt * grav / delp(:,:,k)
 
     aerosolPhobic(:,:,k) = aerosolPhobic(:,:,k) &
@@ -3243,7 +3378,7 @@ K_LOOP: do k = km, 1, -1
                     end if
                 end do
             end if
-            ! distribute emissions in the vertical 
+            ! distribute emissions in the vertical
             emissions(i,j,:) = (w_ / sum(w_)) * emissions_layer(i,j)
         end do
     end do
@@ -3264,8 +3399,8 @@ K_LOOP: do k = km, 1, -1
    implicit NONE
 
 ! !INPUT PARAMETERS:
-   integer, intent(in)   :: km   ! total model level 
-   real, intent(in)      :: cdt  ! chemistry model time-step [sec] 
+   integer, intent(in)   :: km   ! total model level
+   real, intent(in)      :: cdt  ! chemistry model time-step [sec]
    real, intent(in)      :: grav ! [m/sec^2]
    real, dimension(:,:,:), intent(in)  :: delp  ! pressure thickness [Pa]
 
@@ -3312,7 +3447,7 @@ K_LOOP: do k = km, 1, -1
 ! !INTERFACE:
    subroutine NIheterogenousChem (NI_phet, xhno3, AVOGAD, AIRMW, PI, RUNIV, rhoa, tmpu, relhum, delp, &
                                   DU, SS, rmedDU, rmedSS, fnumDU, fnumSS, nbinsDU, nbinsSS, &
-                                  km, klid, cdt, grav, fMassHNO3, fMassNO3, fmassair, nNO3an1, nNO3an2, & 
+                                  km, klid, cdt, grav, fMassHNO3, fMassNO3, fmassair, nNO3an1, nNO3an2, &
                                   nNO3an3, HNO3_conc, HNO3_sfcmass, HNO3_colmass, rc)
 
 
@@ -3488,15 +3623,15 @@ K_LOOP: do k = km, 1, -1
 !
 ! !IROUTINE: sktrs_hno3
 !
-! !INTERFACE: 
+! !INTERFACE:
    function sktrs_hno3 ( tk, frh, sad, ad, radA, pi, rgas, fMassHNO3 )
 
 ! !DESCRIPTION:
 ! Below are the series of heterogeneous reactions
 ! The reactions sktrs_hno3n1, sktrs_hno3n2, and sktrs_hno3n3 are provided
 ! as given by Huisheng Bian.  As written they depend on knowing the GOCART
-! structure and operate per column but the functions themselves are 
-! repetitive.  I cook up a single sktrs_hno3 function which is called per 
+! structure and operate per column but the functions themselves are
+! repetitive.  I cook up a single sktrs_hno3 function which is called per
 ! grid box per species with an optional parameter gamma being passed.
 ! Following is objective:
 ! loss rate (k = 1/s) of species on aerosol surfaces
@@ -3560,15 +3695,15 @@ K_LOOP: do k = km, 1, -1
 !
 ! !IROUTINE: sktrs_sslt
 !
-! !INTERFACE: 
+! !INTERFACE:
    function sktrs_sslt ( tk, sad, ad, radA, pi, rgas, fMassHNO3 )
 
 ! !DESCRIPTION:
 ! Below are the series of heterogeneous reactions
 ! The reactions sktrs_hno3n1, sktrs_hno3n2, and sktrs_hno3n3 are provided
 ! as given by Huisheng Bian.  As written they depend on knowing the GOCART
-! structure and operate per column but the functions themselves are 
-! repetitive.  I cook up a single sktrs_hno3 function which is called per 
+! structure and operate per column but the functions themselves are
+! repetitive.  I cook up a single sktrs_hno3 function which is called per
 ! grid box per species with an optional parameter gamma being passed.
 ! Following is objective:
 ! loss rate (k = 1/s) of species on aerosol surfaces
@@ -3679,7 +3814,7 @@ K_LOOP: do k = km, 1, -1
        vStart = 000000
        vEnd = 240000
     end if
- 
+
     __RETURN__(__SUCCESS__)
   end subroutine CombineVolcEmiss
 
@@ -3702,7 +3837,7 @@ K_LOOP: do k = km, 1, -1
                                           aviation_layers,   &
                                           aviation_lto_src, &
                                           aviation_cds_src, &
-                                          aviation_crs_src, rc) 
+                                          aviation_crs_src, rc)
 
 ! !USES:
    implicit NONE
@@ -3907,7 +4042,7 @@ K_LOOP: do k = km, 1, -1
        fPblh = (p0(i,j)-pPblh(i,j))/(ps(i,j)-pPblh(i,j))
 
 !     All source from files specified in kg SO2 m-2 s-1 (unless filename
-!     indicates otherwise!).  
+!     indicates otherwise!).
       srcSO4anthro(i,j) = fSO4ant * fMassSO4/fMassSO2 * &
                 (   f100 * so2anthro_l1_src(i,j) &
                   + f500 * so2anthro_l2_src(i,j)  )
@@ -4095,7 +4230,7 @@ K_LOOP: do k = km, 1, -1
   integer, optional, intent(out)   :: rc    ! Error return code:
                                             !  0 - all is well
 
-! !DESCRIPTION: 
+! !DESCRIPTION:
 !
 ! !REVISION HISTORY:
 !
@@ -4478,7 +4613,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
 !
 ! !REVISION HISTORY:
-! 29July2004 P.Colarco - legacy code 
+! 29July2004 P.Colarco - legacy code
 ! 23July2020 E.Sherman - ported to process library.
 
 ! !Local Variables
@@ -4594,7 +4729,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
 !==================================================================================
 !BOP
-! !IROUTINE: SU_Wet_Removal 
+! !IROUTINE: SU_Wet_Removal
 
    subroutine SU_Wet_Removal ( km, nbins, klid, cdt, kin, grav, airMolWght, delp, fMassSO4, fMassSO2, &
                                h2o2_int, ple, rhoa, precc, precl, pfllsan, pfilsan, tmpu, &
@@ -4614,14 +4749,14 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    logical, intent(in) :: KIN   ! true for aerosol
    real, intent(in)    :: grav  ! gravity [m/sec]
    real, intent(in)    :: airMolWght ! air molecular weight [kg]
-   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]  
+   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]
    real, intent(in) :: fMassSO4, fMassSO2
    real, dimension(:,:,:) :: h2o2_int
    real, pointer, dimension(:,:,:), intent(in) :: ple     ! level edge air pressure
    real, pointer, dimension(:,:,:), intent(in) :: rhoa    ! air density, [kg m-3]
    real, pointer, dimension(:,:), intent(in)   :: precc   ! total convective precip, [mm day-1]
    real, pointer, dimension(:,:), intent(in)   :: precl   ! total large-scale prec,  [mm day-1]
-   real, pointer, dimension(:,:,:), intent(in) :: pfllsan ! 3D flux of liquid nonconvective precipitation [kg/(m^2 sec)] 
+   real, pointer, dimension(:,:,:), intent(in) :: pfllsan ! 3D flux of liquid nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:,:), intent(in) :: pfilsan ! 3D flux of ice nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:,:), intent(in) :: tmpu    ! temperature, [K]
    integer, intent(in) :: nDMS, nSO2, nSO4, nMSA !index position of sulfates
@@ -4655,7 +4790,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !  will be a function of time of day and lat/lon.  For now we simply add
 !  this to the grid component before calculating it.  I bet this is
 !  somewhere else in the model.
- 
+
 !
 ! !REVISION HISTORY:
 !
@@ -4673,7 +4808,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    real*8 :: qmx, qd, A                ! temporary variables on moisture
    real*8 :: F, B, BT                  ! temporary variables on cloud, freq.
    real*8, allocatable :: fd(:,:)      ! flux across layers [kg m-2]
-   real*8, allocatable :: dpfli(:,:,:) ! 
+   real*8, allocatable :: dpfli(:,:,:) !
    real*8, allocatable :: DC(:)        ! scavenge change in mass mixing ratio
 !   real :: c_h2o(i1:i2,j1:j2,km), cldliq(i1:i2,j1:j2,km), cldice(i1:i2,j1:j2,km)
    real, dimension(:,:,:), allocatable :: c_h2o, cldliq, cldice
@@ -4702,7 +4837,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    allocate(cldice, mold=rhoa)
 !  Initialize local variables
 !  --------------------------
-!  c_h2o, cldliq, and cldice are respectively intended to be the 
+!  c_h2o, cldliq, and cldice are respectively intended to be the
 !  water mixing ratio (liquid or vapor?, in or out of cloud?)
 !  cloud liquid water mixing ratio
 !  cloud ice water mixing ratio
@@ -4777,7 +4912,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
      do k = LH, km
 
 !-----------------------------------------------------------------------------
-!   (1) LARGE-SCALE RAINOUT:             
+!   (1) LARGE-SCALE RAINOUT:
 !       Tracer loss by rainout = TC0 * F * exp(-B*dt)
 !         where B = precipitation frequency,
 !               F = fraction of grid box covered by precipitating clouds.
@@ -4814,10 +4949,10 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
         if (DC(n).lt.0.) DC(n) = 0.
        end do
 
-       call updateAerosol(DMS(i,j,k), DC(nDMS)) 
-       call updateAerosol(SO2(i,j,k), DC(nSO2)) 
-       call updateAerosol(SO4(i,j,k), DC(nSO4)) 
-       call updateAerosol(MSA(i,j,k), DC(nMSA)) 
+       call updateAerosol(DMS(i,j,k), DC(nDMS))
+       call updateAerosol(SO2(i,j,k), DC(nSO2))
+       call updateAerosol(SO4(i,j,k), DC(nSO4))
+       call updateAerosol(MSA(i,j,k), DC(nMSA))
 
 !      Flux down:  unit is kg m-2
 !      Formulated in terms of production in the layer.  In the revaporation step
@@ -5032,7 +5167,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
 !-----------------------------------------------------------------------------
 !  (5) RE-EVAPORATION.  Assume that SO2 is re-evaporated as SO4 since it
-!      has been oxidized by H2O2 at the level above. 
+!      has been oxidized by H2O2 at the level above.
 !-----------------------------------------------------------------------------
 !     Add in the flux from above, which will be subtracted if reevaporation occurs
       if(k .gt. LH) then
@@ -5113,7 +5248,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
      ! !USES:
      implicit NONE
-     ! !INPUT PARAMETERS:      
+     ! !INPUT PARAMETERS:
       real, intent(inout) :: aerosol
       real*8, intent(in)  :: DC
 
@@ -5160,7 +5295,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    real, pointer, dimension(:,:,:), intent(in) :: v       ! north-south wind [m s-1]
 
 ! !INOUTPUT PARAMETERS:
-   real, dimension(:,:,:), intent(inout) :: DMS  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: DMS  ! dimethyl sulfide [kg/kg]
    real, dimension(:,:,:), intent(inout) :: SO2  ! sulfer dioxide [kg/kg]
    real, dimension(:,:,:), intent(inout) :: SO4  ! sulfate aerosol [kg/kg]
    real, dimension(:,:,:), intent(inout) :: MSA  ! methanesulphonic acid [kg/kg]
@@ -5185,7 +5320,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    real, pointer, dimension(:,:,:), intent(inout)  :: snum       ! Sulfate number density [# m-2]
    integer, optional, intent(out)   :: rc         ! Error return code:
                                                   !  0 - all is well
-                                                  !  1 - 
+                                                  !  1 -
 
 
 ! !DESCRIPTION: Calculates some simple 2d diagnostics from the SU fields
@@ -5305,7 +5440,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    endif
 
 
-!  Calculate the mass concentration of sulfate 
+!  Calculate the mass concentration of sulfate
    if( associated(so4conc) ) then
       so4conc(i1:i2,j1:j2,1:km) = 0.
       so4conc(i1:i2,j1:j2,1:km) = SO4(i1:i2,j1:j2,1:km)*rhoa(i1:i2,j1:j2,1:km)
@@ -5472,7 +5607,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 ! !USES:
    implicit NONE
 
-! !INPUT PARAMETERS:  
+! !INPUT PARAMETERS:
    integer, intent(in) :: km     ! number of model levels
    integer, intent(in) :: klid   ! index for pressure lid
    real, intent(in)    :: cdt    ! chemisty model timestep [sec]
@@ -5483,17 +5618,17 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    real, intent(in)    :: airMolWght ! molecular weight of air [kg/kmol]
    real, intent(in)    :: cpd
    real, intent(in)    :: grav   ! gravity [m/sec]
-   real, intent(in)    :: fMassMSA, fMassDMS, fMassSO2, fMassSO4 ! gram molecular weights of species 
+   real, intent(in)    :: fMassMSA, fMassDMS, fMassSO2, fMassSO4 ! gram molecular weights of species
    integer, intent(in) :: nymd   ! model year month day
    integer, intent(in) :: nhms   ! model hour mintue second
    real, dimension(:,:), intent(in) :: lonRad   ! model grid lon [radians]
    real, dimension(:,:), intent(in) :: latRad   ! model grid lat [radians]
-   real, dimension(:,:,:), intent(inout) :: dms  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: dms  ! dimethyl sulfide [kg/kg]
    real, dimension(:,:,:), intent(inout) :: so2  ! sulfer dioxide [kg/kg]
    real, dimension(:,:,:), intent(inout) :: so4  ! sulfate aerosol [kg/kg]
    real, dimension(:,:,:), intent(inout) :: msa  ! methanesulphonic acid [kg/kg]
    integer, intent(in) :: nDMS, nSO2, nSO4, nMSA ! index position of sulfates
-   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]  
+   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in) :: tmpu   ! temperature [K]
    real, dimension(:,:,:), intent(in) :: cloud  ! cloud fraction for radiation [1]
    real, pointer, dimension(:,:,:), intent(in) :: rhoa   ! layer air density [kg/m^3]
@@ -5523,7 +5658,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 ! !OUTPUT PARAMETERS:
    integer, optional, intent(out)   :: rc         ! Error return code:
                                                   !  0 - all is well
-                                                  !  1 - 
+                                                  !  1 -
 
 ! !DESCRIPTION: Updates the SU concentration due to chemistry
 !  The SU grid component is currently established with 4 different
@@ -5692,20 +5827,20 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
                                      fMassMSA, fMassDMS, fMassSO2, &
                                      qa, nDMS, xoh, xno3, &
                                      cossza, tmpu, rhoa, &
-                                     pSO2_DMS, pMSA_DMS, SU_dep, & 
+                                     pSO2_DMS, pMSA_DMS, SU_dep, &
                                      rc)
 
 ! !USES:
    implicit NONE
 
-! !INPUT PARAMETERS:  
+! !INPUT PARAMETERS:
    integer, intent(in) :: km     ! number of model levels
    integer, intent(in) :: klid   ! index for pressure lid
    real, intent(in)    :: cdt    ! chemisty model timestep [sec]
    real, intent(in)    :: nAvogadro  ! Avogadro's number [1/kmol]
    real, intent(in)    :: airMolWght ! molecular weight of air [kg/kmol]
    real, intent(in)    :: cpd
-   real, intent(in)    :: fMassMSA, fMassDMS, fMassSO2 ! gram molecular weights of species 
+   real, intent(in)    :: fMassMSA, fMassDMS, fMassSO2 ! gram molecular weights of species
    integer, intent(in) :: nDMS       !index position of sulfates
    real, dimension(:,:,:), intent(in) :: xoh, xno3  ! OH, NO3 respectievly [kg/kg]
    real, dimension(:,:), intent(in)   :: cossza
@@ -5714,7 +5849,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
 
 ! !INOUTPUT PARAMETERS:
-   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg]
    real, pointer, dimension(:,:,:), intent(inout) :: SU_dep ! Sulfate Dry Deposition All Bins [kg m-2 s-1]
 
 ! !OUTPUT PARAMETERS:
@@ -5777,7 +5912,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    allocate(pSO2_DMS, mold=tmpu)
    allocate(pMSA_DMS, mold=tmpu)
 
-!  spatial loop 
+!  spatial loop
    do k = klid, km
     do j = j1, j2
      do i = i1, i2
@@ -5866,7 +6001,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 ! !USES:
    implicit NONE
 
-! !INPUT PARAMETERS:  
+! !INPUT PARAMETERS:
    integer, intent(in) :: km     ! number of model levels
    integer, intent(in) :: klid   ! index for pressure lid
    real, intent(in)    :: cdt    ! chemisty model timestep [sec]
@@ -5874,18 +6009,18 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    real, intent(in)    :: airMolWght ! molecular weight of air [kg/kmol]
    real, intent(in)    :: cpd
    real, intent(in)    :: grav       ! gravity [m/sec]
-   real, intent(in)    :: fMassSO4, fMassSO2 ! gram molecular weights of species 
+   real, intent(in)    :: fMassSO4, fMassSO2 ! gram molecular weights of species
    integer, intent(in) :: nSO2       !index position of sulfates
    real, dimension(:,:,:), intent(in) :: tmpu   ! temperature [K]
    real, dimension(:,:,:), intent(in) :: rhoa   ! layer air density [kg/m^3]
-   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]  
+   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]
    real, dimension(:,:,:), intent(in) :: cloud  ! cloud fraction for radiation [1]
    real, dimension(:,:), intent(in)   :: drydepf  ! dry deposition frequency [s-1]
    real, pointer, dimension(:,:), intent(in) :: oro  ! land-ocean-ice mask
    real, dimension(:,:,:), intent(in) :: pSO2_DMS ! SO2 production from DMS oxidation [kg m-2 s-1]
 
 ! !INOUTPUT PARAMETERS:
-   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg]
    real, dimension(:,:,:), intent(inout) :: xoh, xh2o2  ! OH, H2O2 respectievly [kg/kg]
    real, pointer, dimension(:,:,:), intent(inout) :: SU_dep ! Sulfate Dry Deposition All Bins [kg m-2 s-1]
 
@@ -5948,10 +6083,10 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !  Conversion of SO2 mmr to SO2 vmr
    fMR = airMolWght / fMassSO2
 
-!  Initialize flux variable   
+!  Initialize flux variable
    fout = 0.
 
-!  spatial loop 
+!  spatial loop
    do k = klid, km
     do j = 1, j2
      do i = 1, i2
@@ -6062,19 +6197,19 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 ! !USES:
    implicit NONE
 
-! !INPUT PARAMETERS:  
+! !INPUT PARAMETERS:
    integer, intent(in) :: km     ! number of model levels
    integer, intent(in) :: klid   ! index for pressure lid
    real, intent(in)    :: cdt    ! chemisty model timestep [sec]
    real, intent(in)    :: grav   ! gravity [m/sec]
    integer, intent(in) :: nSO4   ! index position of sulfate
-   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]  
+   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]
    real, dimension(:,:), intent(in)   :: drydepf    ! dry deposition frequency [s-1]
    real, dimension(:,:,:), intent(in) :: pSO4g_SO2  ! SO4 production - gas phase [kg kg-1 s-1]
    real, dimension(:,:,:), intent(in) :: pSO4aq_SO2 ! SO4 production - aqueous [kg kg-1 s-1]
 
 ! !INOUTPUT PARAMETERS:
-   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg]
    real, pointer, dimension(:,:,:), intent(inout) :: SU_dep ! Sulfate Dry Deposition All Bins [kg m-2 s-1]
 
 ! !OUTPUT PARAMETERS:
@@ -6114,7 +6249,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !  Initialize flux variable
    fout = 0.
 
-!  spatial loop 
+!  spatial loop
    do k = klid, km
     do j = 1, j2
      do i = 1, i2
@@ -6164,24 +6299,24 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 ! !USES:
    implicit NONE
 
-! !INPUT PARAMETERS:  
+! !INPUT PARAMETERS:
    integer, intent(in) :: km     ! number of model levels
    integer, intent(in) :: klid   ! index for pressure lid
    real, intent(in)    :: cdt    ! chemisty model timestep [sec]
    real, intent(in)    :: grav   ! gravity [m/sec]
    integer, intent(in) :: nMSA   ! index position of sulfate
-   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]  
+   real, dimension(:,:,:), intent(in) :: delp   ! pressure thickness [Pa]
    real, dimension(:,:), intent(in)   :: drydepf   ! dry deposition frequency [s-1]
    real, dimension(:,:,:), intent(in) :: pMSA_DMS  ! MSA production - gas phase [kg kg-1 s-1]
 
 ! !INOUTPUT PARAMETERS:
-   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg] 
+   real, dimension(:,:,:), intent(inout) :: qa  ! dimethyl sulfide [kg/kg]
    real, pointer, dimension(:,:,:), intent(inout) :: SU_dep ! Sulfate Dry Deposition All Bins [kg m-2 s-1]
 
 ! !OUTPUT PARAMETERS:
    integer, optional, intent(out)   :: rc
 
-! !DESCRIPTION: 
+! !DESCRIPTION:
 !
 !  MSA production:
 !    The only production term is due to DMS oxidation.
@@ -6211,7 +6346,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 
    allocate(fout(i2,j2))
 
-!  spatial loop 
+!  spatial loop
    do k = klid, km
     do j = 1, j2
      do i = 1, i2
@@ -6253,7 +6388,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !BOP
 ! !IROUTINE: get_HenrysLawCts
 
-   subroutine get_HenrysLawCts(name,c1,c2,c3,c4,rc) 
+   subroutine get_HenrysLawCts(name,c1,c2,c3,c4,rc)
 
 ! !USES:
    implicit NONE
@@ -6279,7 +6414,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
   INTEGER,PARAMETER :: nspecies_HL=051
   REAL   ,PARAMETER :: notfound = -1.
 
-  !Name of species 
+  !Name of species
   CHARACTER(LEN=8),PARAMETER,DIMENSION(nspecies_HL) :: spc_name=(/ &
       'O3  ' & !001
      ,'H2O2' & !002
@@ -6335,7 +6470,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    /)
 
 
-  !Number of each specie   
+  !Number of each specie
   INTEGER,PARAMETER :: O3  =001
   INTEGER,PARAMETER :: H2O2=002
   INTEGER,PARAMETER :: NO  =003
@@ -6392,11 +6527,11 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !     Henrys law coefficient
 !     [KH298]=mole/(l atm)
 !     Referencias em R. Sander (1999)
-!     Compilation of Henry Law Constants 
-!     for Inorganic and Organic Species 
-!     of Potential Importance in 
-!     Environmental Chemistry (Version 3) 
-!     http://www.henrys-law.org 
+!     Compilation of Henry Law Constants
+!     for Inorganic and Organic Species
+!     of Potential Importance in
+!     Environmental Chemistry (Version 3)
+!     http://www.henrys-law.org
 !     * indica artigos nao encontrados nesse endereço eletronico
   REAL,PARAMETER,DIMENSION(nspecies_HL) :: hstar=(/&
     1.10E-2              ,   & ! O3 - 001
@@ -6457,10 +6592,10 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
 !     [-DH/R]=K
 !     Referencias em R. Sander (1999)
 !     Compilation of Henry Law Constants
-!     for Inorganic and Organic Species 
-!     of Potential Importance in 
+!     for Inorganic and Organic Species
+!     of Potential Importance in
 !     Environmental Chemistry (Version 3)
-!     http://www.henrys-law.org 
+!     http://www.henrys-law.org
   REAL,PARAMETER,DIMENSION(nspecies_HL) :: dhr=(/&
     2400.         ,   & ! O3 - 001
     7400.         ,   & ! H2O2 - 002
@@ -6571,7 +6706,7 @@ real, parameter :: airMolWght = 28.97 ! molecular weight of air
    /)
 
 
-!    ACID DISSOCIATION CONSTANT AT 298K 
+!    ACID DISSOCIATION CONSTANT AT 298K
 !     [mole/liter of liquid water]
 !     Referencias: Barth et al. JGR 112, D13310 2007
 !     Martell and Smith, 1976, Critical stability
@@ -6699,7 +6834,7 @@ loop2: DO l = 1,nspecies_HL
           c2  =   dhr(l)
           c3  =   ak0(l)
           c4  =   dak(l)
-          found = 1     
+          found = 1
           EXIT loop2
         ENDIF
        enddo loop2
@@ -6751,7 +6886,7 @@ loop2: DO l = 1,nspecies_HL
    integer, optional, intent(out) :: rc                   ! Error return code:
 
 
-! !DESCRIPTION: Prepares variables and calls the RPMARES (thermodynamics module) 
+! !DESCRIPTION: Prepares variables and calls the RPMARES (thermodynamics module)
 !
 ! !REVISION HISTORY:
 !
@@ -6836,7 +6971,7 @@ loop2: DO l = 1,nspecies_HL
 ! !INPUT PARAMETERS:
    real(kind=DP) :: SO4              ! Total sulfate in micrograms / m**3
    real(kind=DP) :: GNO3             ! Gas-phase nitric acid in micrograms / m**3
-   real(kind=DP) :: GNH3             ! Gas-phase ammonia in micrograms / m**3 
+   real(kind=DP) :: GNH3             ! Gas-phase ammonia in micrograms / m**3
    real(kind=DP) :: RH               ! Fractional relative humidity
    real(kind=DP) :: TEMP             ! Temperature in Kelvin
    real(kind=DP) :: ASO4             ! Aerosol sulfate in micrograms / m**3
@@ -6947,15 +7082,15 @@ loop2: DO l = 1,nspecies_HL
 !   F.Binkowski 8/1/97    Changed minimum sulfate from 0.0 to 1.0e-6 i.e.
 !                         1 picogram per cubic meter
 !   F.Binkowski 2/23/98   Changes to code made by Ingmar Ackermann to
-!                         deal with precision problems on workstations 
+!                         deal with precision problems on workstations
 !                         incorporated in to this version.  Also included
-!                         are his improved descriptions of variables. 
-!  F. Binkowski 8/28/98   changed logic as follows: 
+!                         are his improved descriptions of variables.
+!  F. Binkowski 8/28/98   changed logic as follows:
 !                         If iterations fail, initial values of nitrate
-!                          are retained. 
+!                          are retained.
 !                         Total mass budgets are changed to account for gas
 !                         phase returned.
-!  F.Binkowski 10/01/98   Removed setting RATIO to 5 for low to 
+!  F.Binkowski 10/01/98   Removed setting RATIO to 5 for low to
 !                         to zero sulfate sulfate case.
 !  F.Binkowski 01/10/2000 reconcile versions
 !
@@ -6969,7 +7104,7 @@ loop2: DO l = 1,nspecies_HL
 !                          as REAL*8's.  Cleaned up comments.  Also now force
 !                          double precision explicitly with "D" exponents.
 !  P. Le Sager and        Bug fix for low ammonia case -- prevent floating
-!  R. Yantosca 04/10/2008  point underflow and NaN's. 
+!  R. Yantosca 04/10/2008  point underflow and NaN's.
 !  S. Steenrod 04/15/2010 Modified to include into GMI model
 !  E. Sherman  08/06/2020 Moved to GOCART2G process library
 
@@ -7132,7 +7267,7 @@ loop2: DO l = 1,nspecies_HL
                                !   NO3-); (3, HSO4-)  (moles / kg water)
    real(kind=DP)  :: CRUTES( 3 )      ! Coefficients and roots of
    real(kind=DP)  :: GAMS( 2, 3 )     ! Array of activity coefficients
-   real(kind=DP)  :: TMASSHNO3        ! Total nitrate (vapor and particle) 
+   real(kind=DP)  :: TMASSHNO3        ! Total nitrate (vapor and particle)
    real(kind=DP)  :: GNO3_IN, ANO3_IN
    character (len=75) :: err_msg
 
@@ -7140,7 +7275,7 @@ loop2: DO l = 1,nspecies_HL
 !-------------------------------------------------------------------------
 !  Begin...
 
-      ! For extremely low relative humidity ( less than 1% ) set the 
+      ! For extremely low relative humidity ( less than 1% ) set the
       ! water content to a minimum and skip the calculation.
       IF ( RH .LT. 0.01 ) THEN
          AH2O = FLOOR
@@ -7187,7 +7322,7 @@ loop2: DO l = 1,nspecies_HL
       IRH = MIN( 99, IRH )
 
       !=================================================================
-      ! Specify the equilibrium constants at  correct temperature.  
+      ! Specify the equilibrium constants at  correct temperature.
       ! Also change units from ATM to MICROMOLE/M**3 (for KAN, KPH, and K3 )
       ! Values from Kim et al. (1993) except as noted.
       ! Equilibrium constant in Kim et al. (1993)
@@ -7203,7 +7338,7 @@ loop2: DO l = 1,nspecies_HL
 
       !=================================================================
       ! Equilibrium Relation
-      ! 
+      !
       ! HSO4-(aq)         = H+(aq)   + SO4--(aq)  ; K2SA
       ! NH3(g)            = NH3(aq)               ; KPH
       ! NH3(aq) + H2O(aq) = NH4+(aq) + OH-(aq)    ; K1A
@@ -7247,7 +7382,7 @@ loop2: DO l = 1,nspecies_HL
       GAMAAN = 1.0d0
       GAMOLD = 1.0d0
 
-      ! If there is very little sulfate and  nitrate 
+      ! If there is very little sulfate and  nitrate
       ! set concentrations to a very small value and return.
       IF ( ( TSO4 .LT. MINSO4 ) .AND. ( TNO3 .LT. MINNO3 ) ) THEN
          ASO4  = MAX( FLOOR, ASO4  )
@@ -7296,7 +7431,7 @@ loop2: DO l = 1,nspecies_HL
         IF ( WFRAC .LT. 0.2d0 ) THEN
 
            ! "dry" ammonium sulfate and ammonium nitrate
-           ! compute free ammonia 
+           ! compute free ammonia
            FNH3 = TNH4 - TWOSO4
            CC   = TNO3 * FNH3 - K3
 
@@ -7309,7 +7444,7 @@ loop2: DO l = 1,nspecies_HL
               DISC = BB * BB - 4.0d0 * CC
 
               ! Check for complex roots of the quadratic
-              ! set retain initial values of nitrate and RETURN 
+              ! set retain initial values of nitrate and RETURN
               ! if complex roots are found
               IF ( DISC .LT. 0.0d0 ) THEN
                  XNO3  = 0.0d0
@@ -7369,7 +7504,7 @@ loop2: DO l = 1,nspecies_HL
            BB    = TWOSO4 + KW2 * ( TNO3 + TNH4 - TWOSO4 )
            CC    = -KW2 * TNO3 * ( TNH4 - TWOSO4 )
 
-           ! This is a quadratic for XNO3 [MICROMOLES / M**3] 
+           ! This is a quadratic for XNO3 [MICROMOLES / M**3]
            ! of nitrate in solution
            DISC = BB * BB - 4.0d0 * AA * CC
 
@@ -7411,7 +7546,7 @@ loop2: DO l = 1,nspecies_HL
            CALL AWATER ( IRH, TSO4, YNH4, XNO3, AH2O )
 
            ! ZSR relationship is used to set water levels. Units are
-           ! 10**(-6) kg water/ (cubic meter of air).  The conversion 
+           ! 10**(-6) kg water/ (cubic meter of air).  The conversion
            ! from micromoles to moles is done by the units of WH2O.
            WH2O = 1.0d-3 * AH2O
 
@@ -7421,7 +7556,7 @@ loop2: DO l = 1,nspecies_HL
            MNH4 = 2.0d0 * MAS + MAN
            YNH4 = MNH4 * WH2O
 
-           ! MAS, MAN and MNH4 are the aqueous concentrations of sulfate, 
+           ! MAS, MAN and MNH4 are the aqueous concentrations of sulfate,
            ! nitrate, and ammonium in molal units (moles/(kg water) ).
            STION    = 3.0d0 * MAS + MAN
            CAT( 1 ) = 0.0d0
@@ -7468,12 +7603,12 @@ loop2: DO l = 1,nspecies_HL
         RETURN
 
       !================================================================
-      ! Low Ammonia Case 
+      ! Low Ammonia Case
       !
       ! Coded by Dr. Francis S. Binkowski 12/8/91.(4/26/95)
       ! modified 8/28/98
       ! modified 04/09/2001
-      !       
+      !
       ! All cases covered by this logic
       !=================================================================
       ELSE
@@ -7483,7 +7618,7 @@ loop2: DO l = 1,nspecies_HL
          WH2O = 1.0d-3 * AH2O
          ZH2O = AH2O
 
-         ! convert 10**(-6) kg water/(cubic meter of air) to micrograms 
+         ! convert 10**(-6) kg water/(cubic meter of air) to micrograms
          ! of water per cubic meter of air (1000 g = 1 kg)
          ! in sulfate rich case, preferred form is HSO4-
          !ASO4 = TSO4 * MWSO4
@@ -7496,13 +7631,13 @@ loop2: DO l = 1,nspecies_HL
 
          !==============================================================
          ! *** Examine special cases and return if necessary.
-         !         
-         ! FSB For values of RATIO less than 0.5 do no further 
-         ! calculations.  The code will cycle and still predict the 
-         ! same amount of ASO4, ANH4, ANO3, AH2O so terminate early 
+         !
+         ! FSB For values of RATIO less than 0.5 do no further
+         ! calculations.  The code will cycle and still predict the
+         ! same amount of ASO4, ANH4, ANO3, AH2O so terminate early
          ! to swame computation
          !==============================================================
-         IF ( RATIO .LT. 0.5d0 ) RETURN ! FSB 04/09/2001 
+         IF ( RATIO .LT. 0.5d0 ) RETURN ! FSB 04/09/2001
 
          ! Check for zero water.
          IF ( WH2O .EQ. 0.0d0 ) RETURN
@@ -7513,11 +7648,11 @@ loop2: DO l = 1,nspecies_HL
          ! greater than 11.0 because the model parameters break down
          !### IF ( ZSO4 .GT. 11.0 ) THEN
          !IF ( ZSO4 .GT. 9.0 ) THEN ! 18 June 97
-         !IF ( ZSO4 .GT. 9.d0 ) THEN ! H. Bian 24 June 2015 
-         IF ( ZSO4 .GT. 9.00 ) THEN ! H. Bian 24 June 2015 
+         !IF ( ZSO4 .GT. 9.d0 ) THEN ! H. Bian 24 June 2015
+         IF ( ZSO4 .GT. 9.00 ) THEN ! H. Bian 24 June 2015
             RETURN
          ENDIF
-         IF ( ZSO4 .GT. 0.1d0 .and. TEMP .le. 220.d0) THEN ! H. Bian 24 June 2015 
+         IF ( ZSO4 .GT. 0.1d0 .and. TEMP .le. 220.d0) THEN ! H. Bian 24 June 2015
             RETURN
          ENDIF
 
@@ -7585,7 +7720,7 @@ loop2: DO l = 1,nspecies_HL
             ! Update water
             CALL AWATER ( IRH, TSO4, YNH4, XNO3, AH2O )
 
-            ! Convert 10**(-6) kg water/(cubic meter of air) to micrograms 
+            ! Convert 10**(-6) kg water/(cubic meter of air) to micrograms
             ! of water per cubic meter of air (1000 g = 1 kg)
             WH2O     = 1.0d-3 * AH2O
             CAT( 1 ) = HPLUS
@@ -7603,8 +7738,8 @@ loop2: DO l = 1,nspecies_HL
 
             !------------------------------------------------------------
             ! Add robustness: now check if GAMANA or GAMAS1 is too small
-            ! for the division in RKNA and RK2SA. If they are, return w/ 
-            ! original values: basically replicate the procedure used 
+            ! for the division in RKNA and RK2SA. If they are, return w/
+            ! original values: basically replicate the procedure used
             ! after the current DO-loop in case of no-convergence
             ! (phs, bmy, rjp, 4/10/08)
             !--------------------------------------------------------------
@@ -7716,19 +7851,19 @@ loop2: DO l = 1,nspecies_HL
 !
 !     coded by Dr. Francis S. Binkowski, 4/8/96.
 !
-! *** modified 05/30/2000 
-!     The use of two values of mfs at an ammonium to sulfate ratio 
-!     representative of ammonium sulfate led to an minor inconsistancy 
+! *** modified 05/30/2000
+!     The use of two values of mfs at an ammonium to sulfate ratio
+!     representative of ammonium sulfate led to an minor inconsistancy
 !     in nitrate behavior as the ratio went from a value less than two
-!     to a value greater than two and vice versa with either ammonium 
-!     held constant and sulfate changing, or sulfate held constant and 
+!     to a value greater than two and vice versa with either ammonium
+!     held constant and sulfate changing, or sulfate held constant and
 !     ammonium changing. the value of Chan et al. (1992) is the only value
-!     now used. 
+!     now used.
 !
 ! *** Modified 09/25/2002
 !     Ported into "rpmares_mod.f".  Now declare all variables with REAL*8.
-!     Also cleaned up comments and made cosmetic changes.  Force double 
-!     precision explicitly with "D" exponents. 
+!     Also cleaned up comments and made cosmetic changes.  Force double
+!     precision explicitly with "D" exponents.
 !******************************************************************************
 !
       ! Arguments
@@ -7750,10 +7885,10 @@ loop2: DO l = 1,nspecies_HL
       REAL*8, PARAMETER :: MWANO3 = MWNO3 + MWNH4
 
       !=================================================================
-      ! The polynomials use data for aw as a function of mfs from Tang 
-      ! and Munkelwitz, JGR 99: 18801-18808, 1994.  The polynomials were 
+      ! The polynomials use data for aw as a function of mfs from Tang
+      ! and Munkelwitz, JGR 99: 18801-18808, 1994.  The polynomials were
       ! fit to Tang's values of water activity as a function of mfs.
-      ! 
+      !
       ! *** coefficients of polynomials fit to Tang and Munkelwitz data
       !     now give mfs as a function of water activity.
       !=================================================================
@@ -7832,16 +7967,16 @@ loop2: DO l = 1,nspecies_HL
          !
          ! Crystallization is done as follows:
          !
-         ! For 1.5 <= x, crystallization is assumed to occur 
+         ! For 1.5 <= x, crystallization is assumed to occur
          ! at rh = 0.4
          !
-         ! For x <= 1.0, crystallization is assumed to occur at an 
-         ! rh < 0.01, and since the code does not allow ar rh < 0.01, 
+         ! For x <= 1.0, crystallization is assumed to occur at an
+         ! rh < 0.01, and since the code does not allow ar rh < 0.01,
          ! crystallization is assumed not to occur in this range.
          !
-         ! For 1.0 <= x <= 1.5 the crystallization curve is a straignt 
-         ! line from a value of y15 at rh = 0.4 to a value of zero at 
-         ! y1. From point B to point A in the diagram.  The algorithm 
+         ! For 1.0 <= x <= 1.5 the crystallization curve is a straignt
+         ! line from a value of y15 at rh = 0.4 to a value of zero at
+         ! y1. From point B to point A in the diagram.  The algorithm
          ! does a double interpolation to calculate the amount of
          ! water.
          !
@@ -7892,11 +8027,11 @@ loop2: DO l = 1,nspecies_HL
       ELSE                                 ! 2.0 <= x changed 12/11/2000 by FSB
 
          !==============================================================
-         ! Regime where ammonium sulfate and ammonium nitrate are 
+         ! Regime where ammonium sulfate and ammonium nitrate are
          ! in solution.
-         ! 
+         !
          ! following cf&s for both ammonium sulfate and ammonium nitrate
-         ! check for crystallization here. their data indicate a 40% 
+         ! check for crystallization here. their data indicate a 40%
          ! value is appropriate.
          !==============================================================
          Y2 = 0.0d0
@@ -7942,7 +8077,7 @@ loop2: DO l = 1,nspecies_HL
       REAL*8             :: Y
 
       !=================================================================
-      ! nh3_POLY4 begins here! 
+      ! nh3_POLY4 begins here!
       !=================================================================
       Y = A(1) + X * ( A(2) + X * ( A(3) + X * ( A(4) )))
 
@@ -7960,7 +8095,7 @@ loop2: DO l = 1,nspecies_HL
       REAL*8             :: Y
 
       !=================================================================
-      ! nh3_POLY6 begins here! 
+      ! nh3_POLY6 begins here!
       !=================================================================
       Y = A(1) + X * ( A(2) + X * ( A(3) + X * ( A(4) +  &
      &           X * ( A(5) + X * ( A(6)  )))))
@@ -7981,7 +8116,7 @@ loop2: DO l = 1,nspecies_HL
 ! *** modified 2/23/98 by fsb to incorporate Dr. Ingmar Ackermann's
 !     recommendations for setting a0, a1,a2 as real*8 variables.
 !
-! Modified by Bob Yantosca (10/15/02) 
+! Modified by Bob Yantosca (10/15/02)
 ! - Now use upper case / white space
 ! - force double precision with "D" exponents
 ! - updated comments / cosmetic changes
@@ -8154,7 +8289,7 @@ loop2: DO l = 1,nspecies_HL
       ! ARGUMENTS and their descriptions
       !=================================================================
       REAL*8, optional   :: MOLNU            ! tot # moles of all ions
-      REAL*8, optional   :: PHIMULT          ! multicomponent paractical 
+      REAL*8, optional   :: PHIMULT          ! multicomponent paractical
                                              !   osmotic coef
       REAL*8             :: CAT(NCAT)        ! cation conc in moles/kg (input)
       REAL*8             :: AN(NAN)          ! anion conc in moles/kg (input)
@@ -8395,7 +8530,7 @@ loop2: DO l = 1,nspecies_HL
 ! !DESCRIPTION:
 !  Output error messages, and exits if requested.
 !
-! !AUTHOR: 
+! !AUTHOR:
 !  Jules Kouatchou
 !
 ! !REVISION HISTORY:
@@ -8452,14 +8587,14 @@ loop2: DO l = 1,nspecies_HL
 ! !INPUT/OUTPUT PARAMETERS:
    integer, intent(in) :: im_World, jm_World  ! number of global grid cells
    real,    intent(in) :: res_value(:)        ! array with the resolution dependent values:
-                                              ! the 'a', 'b', ..., 'e' resolution values have 
+                                              ! the 'a', 'b', ..., 'e' resolution values have
                                               ! indexes 1, 2, ..., 5.
 
 ! !OUTPUT PARAMETERS:
    integer, intent(inout) :: rc               ! return code
 
 
-! !DESCRIPTION: 
+! !DESCRIPTION:
 !
 ! !REVISION HISTORY:
 !
@@ -8585,9 +8720,9 @@ loop2: DO l = 1,nspecies_HL
        integer, intent(in) :: nhms
        real, intent(in)    :: cdt       ! time step in seconds
 
-! !DESCRIPTION: 
+! !DESCRIPTION:
 !
-!      Applies diurnal cycle to biomass emissions.       
+!      Applies diurnal cycle to biomass emissions.
 !
 ! !DESCRIPTION:
 !
@@ -8608,7 +8743,7 @@ loop2: DO l = 1,nspecies_HL
        integer, parameter :: N = 240
        real,    parameter :: DT = 86400. / N
 
-!      Apply flat diurnal cycle for boreal forests as a 
+!      Apply flat diurnal cycle for boreal forests as a
 !      temporary solution to prevent very high aerosol
 !      optical depth during the day
        real,    parameter :: Boreal(N) = 1.0
@@ -8652,7 +8787,7 @@ loop2: DO l = 1,nspecies_HL
 !         0.2497, 0.2412, 0.2326, 0.2240, 0.2153, 0.2066, &
 !         0.1979, 0.1894, 0.1809, 0.1726, 0.1643, 0.1562, &
 !         0.1482, 0.1404, 0.1326, 0.1250, 0.1175, 0.1101, &
-!         0.1028, 0.0956, 0.0886, 0.0818, 0.0751, 0.0687 /)       
+!         0.1028, 0.0956, 0.0886, 0.0818, 0.0751, 0.0687 /)
        real,    parameter :: NonBoreal(N) = &
        (/ 0.0121, 0.0150, 0.0172, 0.0185, 0.0189, 0.0184, &
           0.0174, 0.0162, 0.0151, 0.0141, 0.0133, 0.0126, &
