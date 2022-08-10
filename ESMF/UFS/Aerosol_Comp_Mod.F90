@@ -300,6 +300,7 @@ contains
 
           select case (trim(itemNameList(item)))
             case ("AIRDENS")
+              !$OMP PARALLEL DO
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -308,7 +309,9 @@ contains
                   end do
                 end do
               end do
+              !$OMP END PARALLEL DO
             case ("DELP")
+              !$OMP PARALLEL DO
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -317,6 +320,7 @@ contains
                   end do
                 end do
               end do
+              !$OMP END PARALLEL DO
             case ("DZ")
               fp2dr = onebg * phil(:,:,1)
             case ("CN_PRCP")
@@ -324,6 +328,7 @@ contains
             case ("NCN_PRCP")
               fp2dr = max(0._ESMF_KIND_R8, rain - rainc) / dt
             case ("RH2")
+              !$OMP PARALLEL DO
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -335,11 +340,13 @@ contains
                   end do
                 end do
               end do
+              !$OMP END PARALLEL DO
             case ("SLC")
               fp2dr = slc(:,:,1)
             case ("Z0H")
               fp2dr = 0.01_ESMF_KIND_R4 * zorl
             case ("ZLE")
+              !$OMP PARALLEL DO
               do k = 1, nk + 1
                 kk = nk - k + 1
                 do j = 1, nj
@@ -348,6 +355,7 @@ contains
                   end do
                 end do
               end do
+              !$OMP END PARALLEL DO
           end select
         end if
 
@@ -554,6 +562,7 @@ contains
                 scalefac = AerosolTracerGetUnitsConv(tracerUnits, fieldUnits)
                 if (associated(fp3d)) then
                   v = tracerId
+                  !$OMP PARALLEL DO
                   do k = 1, nk
                     kk = nk - k + 1
                     do j = 1, nj
@@ -562,8 +571,10 @@ contains
                       end do
                     end do
                   end do
+                  !$OMP END PARALLEL DO
                 else if (associated(fp4d)) then
                   v = tracerId
+                  !$OMP PARALLEL DO
                   do n = 1, size(fp4d, 4)
                     do k = 1, nk
                       kk = nk - k + 1
@@ -575,12 +586,14 @@ contains
                     end do
                     v = v + 1
                   end do
+                  !$OMP END PARALLEL DO
                 end if
               case (1)
                 ! -- export
                 scalefac = AerosolTracerGetUnitsConv(fieldUnits, tracerUnits)
                 if (associated(fp3d)) then
                   v = tracerId
+                  !$OMP PARALLEL DO
                   do k = 1, nk
                     kk = nk - k + 1
                     do j = 1, nj
@@ -589,8 +602,10 @@ contains
                       end do
                     end do
                   end do
+                  !$OMP END PARALLEL DO
                 else if (associated(fp4d)) then
                   v = tracerId
+                  !$OMP PARALLEL DO
                   do n = 1, size(fp4d, 4)
                     do k = 1, nk
                       kk = nk - k + 1
@@ -602,6 +617,7 @@ contains
                     end do
                     v = v + 1
                   end do
+                  !$OMP END PARALLEL DO
                 end if
             end select
           end if

@@ -93,7 +93,7 @@ contains
     ni = size(q,1)
     nj = size(q,2)
     nk = size(q,3)
-
+    !OMP PARALLEL DO
     do n = 1, size(pm_size)
       pm => trp % indexMap % at(pm_size(n))
       if (associated(pm)) then
@@ -119,6 +119,7 @@ contains
         end do
       end if
     end do
+    !$OMP END PARALLEL DO
 
   end subroutine ComputePM
 
