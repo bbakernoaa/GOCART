@@ -301,6 +301,8 @@ contains
           select case (trim(itemNameList(item)))
             case ("AIRDENS")
               !$OMP parallel do default (none) & 
+              !$OMP             shared  (fp3dr, prsl, rd, temp, fv, q, ni, nj, nk)
+              !$OMP             private (i, j, k, kk)
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -312,6 +314,8 @@ contains
               !$OMP END PARALLEL DO
             case ("DELP")
               !$OMP parallel do default (none) & 
+              !$                shared  (ni, nk, nk, psri, fp3dr)
+              !$                private (i, j, k, kk)
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -329,6 +333,8 @@ contains
               fp2dr = max(0._ESMF_KIND_R8, rain - rainc) / dt
             case ("RH2")
               !$OMP parallel do default (none) & 
+              !$OMP             shared  (ni, nj, nk, temp, stdtemp, al, bl, cl, prsl, q, epswater, fp3dr)
+              !$OMP             private (i, j, k, kk, tmp, blkesat, blkevap)
               do k = 1, nk
                 kk = nk - k + 1
                 do j = 1, nj
@@ -347,6 +353,8 @@ contains
               fp2dr = 0.01_ESMF_KIND_R4 * zorl
             case ("ZLE")
               !$OMP parallel do default (none) & 
+              !$OMP             shared  (ni, nj, nk, onegb, phii, fp3dr)
+              !$OMP             private (i, j, k, kk)
               do k = 1, nk + 1
                 kk = nk - k + 1
                 do j = 1, nj
@@ -563,8 +571,8 @@ contains
                 if (associated(fp3d)) then
                   v = tracerId
                   !$OMP parallel do default (none) & 
-                  !$                shared  (fp3d, q, scalefac) &
-                  !$                private (k, kk ,nk, j, i)
+                  !$                shared  (fp3d, q, scalefac, ni, nj, nk) &
+                  !$                private (k, kk , j, i)
                   do k = 1, nk
                     kk = nk - k + 1
                     do j = 1, nj
@@ -577,8 +585,8 @@ contains
                 else if (associated(fp4d)) then
                   v = tracerId
                   !$OMP parallel do default (none) & 
-                  !$                shared  (fp4d, q, scalefac) &
-                  !$                private (k, kk ,nk, j, i)
+                  !$                shared  (fp4d, q, scalefac, ni, nj, nk) &
+                  !$                private (k, kk , j, i)
                   do n = 1, size(fp4d, 4)
                     do k = 1, nk
                       kk = nk - k + 1
@@ -598,8 +606,8 @@ contains
                 if (associated(fp3d)) then
                   v = tracerId
                   !$OMP parallel do default (none) & 
-                  !$                shared  (fp3d, q, scalefac) &
-                  !$                private (k, kk ,nk, j, i)
+                  !$                shared  (fp3d, q, scalefac, ni, nj, nk) &
+                  !$                private (k, kk j, i)
                   do k = 1, nk
                     kk = nk - k + 1
                     do j = 1, nj
@@ -612,8 +620,8 @@ contains
                 else if (associated(fp4d)) then
                   v = tracerId
                   !$OMP parallel do default (none) & 
-                  !$                shared  (fp4d, q, scalefac) &
-                  !$                private (k, kk ,nk, j, i)
+                  !$                shared  (fp4d, q, scalefac, ni, nj, nk) &
+                  !$                private (k, kk, j, i)
                   do n = 1, size(fp4d, 4)
                     do k = 1, nk
                       kk = nk - k + 1

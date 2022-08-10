@@ -94,8 +94,8 @@ contains
     nj = size(q,2)
     nk = size(q,3)
     !$OMP parallel default (none) & 
-    !$OMP          shared  (q, trp, ni, pm_size, rho) &
-    !$OMP          private (n, bin, i, j, k, kk, s, idx, iter, pm)
+    !$OMP          shared  (q, trp, ni, nj, nk, pm_size, rho, w) &
+    !$OMP          private (n, bin, i, j, k, kk, s, idx, iter, pm, nbins)
     do n = 1, size(pm_size)
       pm => trp % indexMap % at(pm_size(n))
       if (associated(pm)) then
