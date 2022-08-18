@@ -3,6 +3,7 @@ module Aerosol_Diag_Mod
   use ESMF
   use gFTL_StringIntegerMap
   use MAPL, only: MAPL_Cap
+  use OMP_LIB
 
   use Aerosol_Internal_Mod, only: Aerosol_InternalState_T
   use Aerosol_Shared_Mod,   only: AerosolGetPtr
@@ -93,9 +94,6 @@ contains
     ni = size(q,1)
     nj = size(q,2)
     nk = size(q,3)
-    !$OMP parallel default (none) & 
-    !$OMP          shared  (q, trp, ni, nj, nk, pm_size, rho, w) &
-    !$OMP          private (n, bin, i, j, k, kk, s, idx, iter, pm, nbins)
     do n = 1, size(pm_size)
       pm => trp % indexMap % at(pm_size(n))
       if (associated(pm)) then
@@ -106,6 +104,9 @@ contains
           nbins = PMGetTracerWeight(iter % key(), pm_size(n), w)
           s = idx
           do bin = 1, nbins
+            !$OMP parallel do default (none) &
+            !$OMP             shared  (q, w, rho, ni, nj, nk, bin, s, pm) &
+            !$OMP             private (i, j, k, kk)
             do k = 1, nk
               kk = nk - k + 1
               do j = 1, nj
@@ -121,7 +122,6 @@ contains
         end do
       end if
     end do
-    !$OMP END PARALLEL DO
 
   end subroutine ComputePM
 
