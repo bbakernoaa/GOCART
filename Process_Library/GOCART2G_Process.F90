@@ -31,6 +31,7 @@
    public DustEmissionGOCART2G
    public DustEmissionK14
    public DustFluxV2HRatioMB95
+   public DarmenovaDragPartition
    public moistureCorrectionFecan
    public soilMoistureConvertVol2Grav
    public DistributePointEmission
@@ -315,7 +316,8 @@ CONTAINS
    real, parameter :: sigv = 1.45
    real, parameter :: mv = 0.16
    real, parameter :: Betav = 202.0
-   
+
+   real            :: gvf 
    real            :: Lc_veg
    real            :: Rveg1
    real            :: Rveg2
@@ -333,16 +335,22 @@ CONTAINS
 ! 27Jun2024 B.Baker/NOAA    - Original implementation
 !
 !EOP   
-   ! Vegetative piece
-   Lc_veg = -0.35 * LOG(1. - vegfrac)
-   Rveg1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigv * mv * Lc_veg) )
-   Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
+   
 
-   ! Bare surface piece
-   Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc / (1 - vegfrac)) )
-   Rbare1 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc / (1 - vegfrac)) )
+   if (vegfrac < 0.9999) then
+      ! Vegetative piece
+      Lc_veg = -0.35 * LOG(1. - vegfrac)
+      Rveg1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigv * mv * Lc_veg) )
+      Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
 
-   DarmenovaDragPartition = Rveg1 * Rveg2 * Rbare1 * Rbare2
+      ! Bare surface piece
+      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc / (1 - vegfrac)) )
+      Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc / (1 - vegfrac)) )
+
+      DarmenovaDragPartition = Rveg1 * Rveg2 * Rbare1 * Rbare2
+   else
+      DarmenovaDragPartition = 1.0e-5
+   endif
    
    end function DarmenovaDragPartition
 !==================================================================================
