@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
 ### Fixed
 
 - Add explicit `find_package()` calls for missing dependencies for MAPL for builds with spack-stack. Will eventually be fixed in MAPL in later versions
@@ -15,12 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Additional tuning parameters for the soil moisture and drylimit calculations for application specific tuning.
+- Added Drag partition option to fengsha
 
 ### Changed
 
 - Correct soil moisture parameterization in FENGSHA
 - Add `soil_moisture_factor` to the DU2G_instance_DU.rc (same name used in the K14 scheme) and DU2G_GridCompMod.F90 files for FENGSHA
 - Add `soil_drylimit_factor` to the DU2G_instance_DU.rc and DU2G_GridCompMod.F90 files for FENGSHA
+- Add `GVF` to the ESMF/UFS/Aero_Cap.F90 and ESMF/UFS/Aero_Comp_Mod.F90
+- Add drag partition option to use Darmenova et al. 2009 for the fengsha dust scheme
 
 ## [v2.2.1] - 2023-05-30
 
