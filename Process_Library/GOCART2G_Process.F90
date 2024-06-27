@@ -294,6 +294,57 @@ CONTAINS
 
    end function DustFluxV2HRatioMB95
 
+!===============================================================================
+!BOP
+!
+! !IROUTINE: DarmenovaDragPartition - Calculates the double drag parition from Darmenova 2009
+!
+! !INTERFACE:
+   real function DarmenovaDragPartition(Lc, vegfrac)
+! !USES:
+   implicit NONE
+
+! !INPUT PARAMETERS:
+   real, intent(in) :: Lc
+   real, intent(in) :: vegfrac
+
+! !CONSTANTS:
+   real, parameter :: sigb = 1.0
+   real, parameter :: mb = 0.5
+   real, parameter :: Betab = 90.0
+   real, parameter :: sigv = 1.45
+   real, parameter :: mv = 0.16
+   real, parameter :: Betav = 202.0
+   
+   real            :: Lc_veg
+   real            :: Rveg1
+   real            :: Rveg2
+   real            :: Rbare1
+   real            :: Rbare2
+
+! !DESCRIPTION: Computes the drag parition according to Darmenova et al. 2009
+!               Darmenova, K., Sokolik, I. N., Shao, Y., Marticorena, B., and
+!               Bergametti, G.: Development of a physically based dust
+!               emission module within the Weather Research and Forecasting (WRF) model:
+!               Assessment of dust emission parameterizations and input parameters for source regions in Central and East Asia,
+!               J. Geophys. Res.-Atmos., 114, D14201, https://doi.org/10.1029/2008JD011236, 2009
+! !REVISION HISTORY:
+!
+! 27Jun2024 B.Baker/NOAA    - Original implementation
+!
+!EOP   
+   ! Vegetative piece
+   Lc_veg = -0.35 * LOG(1. - vegfrac)
+   Rveg1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigv * mv * Lc_veg) )
+   Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
+
+   ! Bare surface piece
+   Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc / (1 - vegfrac)) )
+   Rbare1 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc / (1 - vegfrac)) )
+
+   DarmenovaDragPartition = Rveg1 * Rveg2 * Rbare1 * Rbare2
+   
+   end function DarmenovaDragPartition
 !==================================================================================
 !BOP
 !
@@ -301,8 +352,8 @@ CONTAINS
 !
 ! !INTERFACE:
    subroutine DustEmissionFENGSHA(fraclake, fracsnow, oro, slc, clay, sand, silt,  &
-                                  ssm, rdrag, airdens, ustar, uthrs, alpha, gamma, &
-                                  kvhmax, grav, rhop, distribution, drylimit_factor, moist_correct, emissions, rc)
+                                  ssm, rdrag, airdens, ustar, vegfrac, uthrs, alpha, gamma, &
+                                  kvhmax, grav, rhop, distribution, drylimit_factor, moist_correct, drag_opt, emissions, rc)
 
 ! !USES:
    implicit NONE
@@ -319,6 +370,7 @@ CONTAINS
    real, dimension(:,:), intent(in) :: rdrag    ! drag partition [1/m]
    real, dimension(:,:), intent(in) :: airdens  ! air density at lowest level [kg/m^3]
    real, dimension(:,:), intent(in) :: ustar    ! friction velocity [m/sec]
+   real, dimension(:,:), intent(in) :: vegfrac  ! vegetative fraction 
    real, dimension(:,:), intent(in) :: uthrs    ! threshold velocity [m/2]
    real,                 intent(in) :: alpha    ! scaling factor [1]
    real,                 intent(in) :: gamma    ! scaling factor [1]
@@ -328,6 +380,7 @@ CONTAINS
    real, dimension(:),   intent(in) :: distribution    ! normalized dust binned distribution [1]
    real,                 intent(in) :: drylimit_factor ! drylimit tuning factor from zender2003 
    real,                 intent(in) :: moist_correct   ! moisture correction factor
+   integer,              intent(in) :: drag_opt        ! drag partition option 
 ! !OUTPUT PARAMETERS:
    real,    intent(out) :: emissions(:,:,:)     ! binned surface emissions [kg/(m^2 sec)]
    integer, intent(out) :: rc                   ! Error return code: __SUCCESS__ or __FAIL__
@@ -353,6 +406,7 @@ CONTAINS
    real                  :: total_emissions
    real                  :: u_sum, u_thresh
    real                  :: smois
+   real                  :: R
 
 ! !CONSTANTS:
    real, parameter       :: ssm_thresh = 1.e-02    ! emit above this erodibility threshold [1]
@@ -403,6 +457,14 @@ CONTAINS
          total_emissions = alpha_grav * fracland * (ssm(i,j) ** gamma) &
                          * airdens(i,j) * kvh
 
+         ! Compute the drag parition
+         ! -------------------------
+         if (drag_opt == 1) then
+            R = rdrag(i,j)
+         else
+            R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j))
+         endif
+         
          !  Compute threshold wind friction velocity using drag partition
          !  -------------------------------------------------------------
          rustar = rdrag(i,j) * ustar(i,j)
