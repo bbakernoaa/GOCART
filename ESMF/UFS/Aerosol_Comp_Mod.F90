@@ -32,7 +32,8 @@ module Aerosol_Comp_Mod
       "V                               ", "inst_merid_wind_levels          ", &
       "PFI_LSAN                        ", "inst_ice_nonconv_tendency_levels", &
       "PFL_LSAN                        ", "inst_liq_nonconv_tendency_levels", &
-      "FCLD                            ", "inst_cloud_frac_levels          "  &
+      "FCLD                            ", "inst_cloud_frac_levels          ", &
+      "FRVEG                           ", "inst_vegetation_area_frac       "  & 
     ]
 
   integer, parameter :: fieldMapSize = size(fieldPairList)/2

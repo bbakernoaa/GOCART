@@ -62,7 +62,8 @@ module Aerosol_Cap
       "ice_fraction_in_atm                  ", &
       "lake_fraction                        ", &
       "ocean_fraction                       ", &
-      "surface_snow_area_fraction           "  &
+      "surface_snow_area_fraction           ", &
+      "inst_vegetation_area_frac            "  &
     ]
   ! -- export fields
   character(len=*), dimension(*), parameter :: &
