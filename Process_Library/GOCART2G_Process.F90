@@ -345,9 +345,9 @@ CONTAINS
       Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
 
       ! Bare surface piece
-      Lc_bare = MIN(2, Lc_bare) ! avoid any numberical issues at high Lc 
-      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc_bare / (1 - vegfrac)) )
-      Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc_bare / (1 - vegfrac)) )
+      Lc_bare = MIN(2, Lc / (1 - vegfrac)) ! avoid any numberical issues at high Lc 
+      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc_bare) )
+      Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc_bare ) )
 
       DarmenovaDragPartition = Rveg1 * Rveg2 * Rbare1 * Rbare2
    else
