@@ -345,7 +345,7 @@ CONTAINS
       Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
 
       ! Bare surface piece
-      Lc_bare = MIN(2, Lc / (1 - vegfrac)) ! avoid any numberical issues at high Lc 
+      Lc_bare = MIN(2.8, Lc / (1 - vegfrac)) ! avoid any numberical issues at high Lc 
       Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc_bare) )
       Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc_bare ) )
 
