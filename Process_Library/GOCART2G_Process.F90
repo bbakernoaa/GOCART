@@ -317,7 +317,6 @@ CONTAINS
    real, parameter :: mv = 0.16
    real, parameter :: Betav = 202.0
 
-   real            :: gvf 
    real            :: Lc_veg
    real            :: Lc_bare
    real            :: Rveg1
@@ -338,7 +337,7 @@ CONTAINS
 !EOP   
    
 
-   if (vegfrac < 0.9999) then ! Avoid divisin by zero 
+   if (vegfrac < 0.5) then ! Avoid divisin by zero 
       ! Vegetative piece
       Lc_veg = -0.35 * LOG(1. - vegfrac)
       Rveg1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigv * mv * Lc_veg) )
@@ -417,7 +416,7 @@ CONTAINS
    real                  :: u_sum, u_thresh
    real                  :: smois
    real                  :: R
-
+   real :: vegmax 
 ! !CONSTANTS:
    real, parameter       :: ssm_thresh = 1.e-02    ! emit above this erodibility threshold [1]
 
@@ -442,9 +441,11 @@ CONTAINS
    alpha_grav = alpha / grav
 
 !  Compute size-independent factors for emission flux
-!  ---------------------------
+   !  ---------------------------
+   vegmax = 0.
    do j = ilb(2), iub(2)
-     do i = ilb(1), iub(1)
+      do i = ilb(1), iub(1)
+         vegmax = max(0.,vegmax)
        ! skip if we are not on land
        ! --------------------------
        skip = (oro(i,j) /= LAND)
@@ -473,6 +474,7 @@ CONTAINS
             R = rdrag(i,j)
          else
             R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j))
+!            write(*,*) 'DRAG:',rdrag(i,j),'VEG:',vegfrac(i,j)
          endif
          
          !  Compute threshold wind friction velocity using drag partition
@@ -506,7 +508,7 @@ CONTAINS
 
      end do
    end do
-
+   write(*,*) '>>>>>>>>>>> VEGMAX: ',VEGMAX
    end subroutine DustEmissionFENGSHA
 
 !==================================================================================

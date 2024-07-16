@@ -189,6 +189,7 @@ contains
        call ESMF_ConfigGetAttribute (cfg, self%f_sdl,      label='soil_drylimit_factor:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%kvhmax,     label='vertical_to_horizontal_flux_ratio_limit:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%drag_opt,   label='drag_parition_option:', __RC__)
+
     case ('k14')
        call ESMF_ConfigGetAttribute (cfg, self%clayFlag,   label='clayFlag:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%f_swc,      label='soil_moisture_factor:', __RC__)
@@ -799,9 +800,9 @@ contains
        if (associated(DU_EROD)) DU_EROD = f_erod_
 
     case ('fengsha')
-
+       
        call DustEmissionFENGSHA (frlake, frsnow, lwi, slc, du_clay, du_sand, du_silt,       &
-                                 du_ssm, du_rdrag, airdens(:,:,self%km), ustar, du_gvf, du_uthres,  &
+                                 du_ssm, du_rdrag, airdens(:,:,self%km), ustar, gvf, du_uthres,  &
                                  self%alpha, self%gamma, self%kvhmax, MAPL_GRAV,   &
                                  self%rhop, self%sdist, self%f_sdl, self%f_swc, self%drag_opt, emissions_surface,  __RC__)
 
