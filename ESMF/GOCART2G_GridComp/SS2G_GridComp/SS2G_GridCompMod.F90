@@ -141,7 +141,7 @@ contains
     call ESMF_ConfigGetAttribute (cfg, self%rlow, label='radius_lower:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%rup, label='radius_upper:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%rmed, label='particle_radius_number:', __RC__)
-    call ESMF_ConfigGetAttribute (cfg, self%fwet, label='wetted_fraction:', __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label='fwet:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label='wetdep_opt:', __RC__)
 
 !   Is SS data driven?
