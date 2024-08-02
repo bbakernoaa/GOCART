@@ -999,7 +999,7 @@ contains
 
         call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
                               KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
-                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, fcld, DUWT(:,:,:), __RC__)
+                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, fcld, DUWT, __RC__)
 
       end if
    end do
