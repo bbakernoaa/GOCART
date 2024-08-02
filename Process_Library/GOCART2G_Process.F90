@@ -2728,7 +2728,7 @@ CONTAINS
 
    subroutine NOAAWetRemoval ( km, klid, n1, n2, bin_ind, cdt, aero_type, kin, grav, fwet, &
                               aerosol, ple, tmpu, rhoa, pfllsan, pfilsan, &
-                              precc, precl, cldf, fluxout, rc, LWC_, IWC_ )
+                              precc, precl, cldf, fluxout, rc) ! , LWC_, IWC_ )
 
 ! !USES:
    implicit NONE
@@ -2755,8 +2755,8 @@ CONTAINS
    real, pointer, dimension(:,:), intent(in)    :: cldf    ! cloud fraction 
    real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]
 
-   real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
-   real, pointer, dimension(:,:,:), intent(in), optional :: IWC_ ! kg/m^3
+   ! real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
+   ! real, pointer, dimension(:,:,:), intent(in), optional :: IWC_ ! kg/m^3
 
 ! !OUTPUT PARAMETERS:
    integer, intent(out)             :: rc          ! Error return code:

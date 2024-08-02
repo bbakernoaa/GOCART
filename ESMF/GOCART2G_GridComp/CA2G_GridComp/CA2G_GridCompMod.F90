@@ -1052,7 +1052,7 @@ contains
         call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-      else if (wetdep_opt == 2) then
+      else if (self%wetdep_opt == 2) then
         call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
