@@ -202,7 +202,6 @@ contains
 
 !   Get large scale scavenging efficiency - fwet 
 !   --------------------------------------------
-    allocate(self%fwet(self%nbins), __STAT__)
     call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
 
 !   Get Wet deposition option
