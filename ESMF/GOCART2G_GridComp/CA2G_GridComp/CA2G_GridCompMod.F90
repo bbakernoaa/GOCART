@@ -57,6 +57,8 @@ module CA2G_GridCompMod
        logical            :: diurnal_bb   ! diurnal biomass burning
        real               :: eAircraftfuel       ! Aircraft emission factor: go from kg fuel to kg C
        real               :: aviation_layers(4)  ! heights of the LTO, CDS and CRS layers
+       integer            :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
+       real, allocatable  :: fwet(:)
 !      !Workspae for point emissions
        logical                :: doing_point_emissions = .false.
        character(len=255)     :: point_emissions_srcfilen   ! filename for pointwise emissions
@@ -535,6 +537,15 @@ contains
     end if
 
     self%instance = instance
+
+!   Get large scale scavenging efficiency - fwet 
+!   --------------------------------------------
+    allocate(self%fwet(self%nbins), __STAT__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", default=(/ 0.0, 1.0 /), __RC__)
+
+!   Get Wet deposition option
+!   ------------------------
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
 
 !   Create Radiation Mie Table
 !   --------------------------
@@ -1033,14 +1044,28 @@ contains
 
 !   Large-scale Wet Removal
 !   -------------------------------
-!   Hydrophobic mode (first tracer) is not removed
-    if (associated(WT)) WT(:,:,1)=0.0
+
     KIN = .true.
 !   Hydrophilic mode (second tracer) is removed
+    fwet = fwet_opt
     fwet = 1.
-    call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, fwet, philic, ple, t, airdens, &
+    if (wetdep_opt == 1) then
+        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 1, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(1), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(2), philic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+    else if (wetdep_opt == 2) then
+        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, 1, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(1), philic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(2), philic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+    end if
+
+    
 
 !   Compute diagnostics
 !   -------------------

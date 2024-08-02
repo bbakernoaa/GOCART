@@ -62,6 +62,8 @@ module DU2G_GridCompMod
        real                   :: f_sdl          ! FENGSHA drylimit tuning factor
        real                   :: Ch_DU_res(NHRES) ! resolutions used for Ch_DU
        real                   :: Ch_DU          ! dust emission tuning coefficient [kg s2 m-5].
+       real, allocatable      :: fwet(:)        ! large scale scavenging efficiency - fwet 
+       integer                :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
        logical                :: maringFlag=.false.  ! maring settling velocity correction
        integer                :: day_save = -1
        character(len=:), allocatable :: emission_scheme     ! emission scheme selector
@@ -153,7 +155,7 @@ contains
     ! process generic config items
     call self%GA_Environment%load_from_config(cfg, universal_cfg, __RC__)
 
-    allocate(self%sfrac(self%nbins), self%rlow(self%nbins), self%rup(self%nbins), __STAT__)
+    allocate(self%sfrac(self%nbins), self%rlow(self%nbins), self%rup(self%nbins), self%fwet(self%nbins),__STAT__)
     ! process DU-specific items
     call ESMF_ConfigGetAttribute (cfg, self%maringFlag, label='maringFlag:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%sfrac,      label='source_fraction:', __RC__)
@@ -197,6 +199,15 @@ contains
     case default
        _ASSERT_RC(.false., "Unallowed emission scheme: "//trim(self%emission_scheme)//". Allowed: ginoux, k14, fengsha", ESMF_RC_NOT_IMPL)
     end select
+
+!   Get large scale scavenging efficiency - fwet 
+!   --------------------------------------------
+    allocate(self%fwet(self%nbins), __STAT__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
+
+!   Get Wet deposition option
+!   ------------------------
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
 
 !   Is DU data driven?
 !   ------------------
@@ -977,10 +988,19 @@ contains
 !  ----------------------------
    KIN = .TRUE.
    do n = 1, self%nbins
-      fwet = 0.8
-      call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
-                              KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
+      if (self%wetdep_opt == 1) then
+      
+        call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+                              KIN, MAPL_GRAV, self%fwet(n), DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
+
+      else if (self%wetdep_opt == 2) then
+
+        call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+                              KIN, MAPL_GRAV, self%fwet(n), DU(:,:,:,n), ple, t, airdens, &
+                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
+
+      end if
    end do
 
 !  Compute diagnostics
