@@ -488,11 +488,11 @@ contains
 !   Get large scale scavenging efficiency - fwet 
 !   --------------------------------------------
     allocate(self%fwet(self%nbins), __STAT__)
-    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", default=(/ 0.0, 1.0 /), __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
 
 !   Get Wet deposition option
 !   ------------------------
-    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=0, __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
 
 !   Create Radiation Mie Table
 !   --------------------------

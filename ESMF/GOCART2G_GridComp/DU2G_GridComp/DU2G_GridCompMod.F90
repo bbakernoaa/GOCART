@@ -988,16 +988,17 @@ contains
 !  ----------------------------
    KIN = .TRUE.
    do n = 1, self%nbins
+      fwet = self%fwet(n)
       if (self%wetdep_opt == 1) then
-      
+              
         call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
-                              KIN, MAPL_GRAV, self%fwet(n), DU(:,:,:,n), ple, t, airdens, &
+                              KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
 
       else if (self%wetdep_opt == 2) then
 
         call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
-                              KIN, MAPL_GRAV, self%fwet(n), DU(:,:,:,n), ple, t, airdens, &
+                              KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
 
       end if
