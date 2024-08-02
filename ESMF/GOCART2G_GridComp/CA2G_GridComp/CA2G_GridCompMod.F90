@@ -541,7 +541,7 @@ contains
 !   Get large scale scavenging efficiency - fwet 
 !   --------------------------------------------
     allocate(self%fwet(self%nbins), __STAT__)
-    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", default=(/ 0.0, 1.0 /), __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
 
 !   Get Wet deposition option
 !   ------------------------
@@ -1055,7 +1055,7 @@ contains
       else if (self%wetdep_opt == 2) then
         call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
-                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, fcld, WT, __RC__)
       end if
     end do
 

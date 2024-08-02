@@ -40,6 +40,7 @@ category: IMPORT
  WCSF       | m3 m-3   | xy   | N    | OPT     | scheme == 'k14'                          | water_surface_layer
  TSOIL1     | K        | xy   | N    | OPT     | scheme == 'k14'                          | soil_temperatures_layer_1
  RHOS       | kg m-3   | xy   | N    | OPT     | scheme == 'k14'                          | air_density_at_surface
+ FCLD       | 1        | xy   | N    | OPT     |                                          | cloud_covered_fraction_tile
 #........................................................................................
  AIRDENS    | kg/m^3   | xyz  | C    | OPT     |                                          | moist_air_density
  DELP       | Pa       | xyz  | C    | OPT     |                                          | pressure_thickness
