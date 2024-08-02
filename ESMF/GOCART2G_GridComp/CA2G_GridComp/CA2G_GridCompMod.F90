@@ -1047,23 +1047,17 @@ contains
 
     KIN = .true.
 !   Hydrophilic mode (second tracer) is removed
-    fwet = fwet_opt
-    fwet = 1.
-    if (wetdep_opt == 1) then
-        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 1, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(1), philic, ple, t, airdens, &
+    do n = 1, self%nbins 
+      if (self%wetdep_opt == 1) then
+        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(2), philic, ple, t, airdens, &
+      else if (wetdep_opt == 2) then
+        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                             KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-    else if (wetdep_opt == 2) then
-        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, 1, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(1), philic, ple, t, airdens, &
-                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(2), philic, ple, t, airdens, &
-                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-    end if
+      end if
+    end do
 
     
 
