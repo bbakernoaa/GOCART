@@ -485,15 +485,6 @@ contains
 
     self%instance = instance
 
-!   Get large scale scavenging efficiency - fwet 
-!   --------------------------------------------
-    allocate(self%fwet(self%nbins), __STAT__)
-    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
-
-!   Get Wet deposition option
-!   ------------------------
-    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
-
 !   Create Radiation Mie Table
 !   --------------------------
     call ESMF_ConfigGetAttribute (cfg, file_, label="aerosol_radBands_optics_file:", __RC__ )
