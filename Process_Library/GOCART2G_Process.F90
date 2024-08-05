@@ -2726,9 +2726,9 @@ CONTAINS
 !  Calculate the wet removal terms for GOCART
 !  https://gmd.copernicus.org/articles/15/5337/2022/
 
-   subroutine NOAAWetRemoval ( km, klid, n1, n2, bin_ind, cdt, aero_type, kin, grav, fwet, &
-                              aerosol, ple, tmpu, rhoa, pfllsan, pfilsan, &
-                              precc, precl, cldf, fluxout, rc) ! , LWC_, IWC_ )
+   subroutine NOAAWetRemoval ( km, klid, n1, n2, bin_ind, cdt, aero_type, phobic, kin, grav, fwet, &
+                              radius, aerosol, ple, tmpu, rhoa, pfllsan, pfilsan, &
+                              precc, precl, fluxout, rc) ! , LWC_, IWC_ )
 
 ! !USES:
    implicit NONE
@@ -2741,9 +2741,11 @@ CONTAINS
    integer, intent(in) :: bin_ind ! bin index (usually the loop iteration)
    real, intent(in)    :: cdt     ! chemistry model time-step [sec]
    character(len=*)    :: aero_type
+   logical, intent(in) :: phobic
    logical, intent(in) :: KIN ! true for aerosol
    real, intent(in)    :: grav    ! gravity [m/sec^2]
-   real, intent(in)    :: fwet
+   real, intent(in)    :: fwet    ! wet scavenging coefficient [-]
+   real, intent(in)    :: radius  ! radius [m]
    real, dimension(:,:,:), intent(inout) :: aerosol  ! internal state aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: ple     ! pressure level thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu    ! temperature [K]
@@ -2752,7 +2754,6 @@ CONTAINS
    real, pointer, dimension(:,:,:), intent(in)  :: pfilsan ! 3D flux of ice nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precc   ! surface convective rain flux [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precl   ! Non-convective precipitation [kg/(m^2 sec)]
-   real, pointer, dimension(:,:), intent(in)    :: cldf    ! cloud fraction 
    real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]
 
    ! real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
@@ -2797,7 +2798,7 @@ CONTAINS
    real, parameter :: B0_cv = 1.5e-3
    real, parameter :: F0_cv = 0.3
    real, parameter :: XL_cv = 2.0e-3
-   real, parameter :: k_wash = 1.d0  ! first order washout rate, constant, [cm^-1]
+   real, parameter :: k_wash = 1.d0  ! fixed first order washout rate, constant for gases, [cm^-1]
 !  Duration of rain: ls = model timestep, cv = 1800 s (<= cdt)
    real            :: Td_ls
    real, parameter :: Td_cv = 1800.
@@ -2912,7 +2913,7 @@ CONTAINS
      if(LH .lt. 1) cycle
 
      do k = LH, km
-      qls(k) = dpfli(i,j,k)/pdog(i,j,k)*rhoa(i,j,k)
+        qls(k) = dpfli(i,j,k) / delz (i,j,k)
      end do
 
 !    Loop over vertical to do the scavenging!
@@ -2928,9 +2929,11 @@ CONTAINS
 !       if Qls is less then 0 in that level.
 !    
 !-----------------------------------------------------------------------------
-      if (qls(k) .gt. tiny(0.)) then
-       k_rain = 1.0e-4 + qls(k) / (1.0e-6) 
-       F = qls(k) / (k_rain * 1.5e-3)   
+       if (qls(k) .gt. tiny(0.)) then
+          ! Here we use the formulation given by Liu et al. 2001
+          ! k_rain = C1 + Q / L
+          k_rain = C1_min_ls + qls(k) / L_ls         
+          F = F0_ls * qls(k) * cdt / (L_ls * (C1_min_ls + qls(k) / L_ls) * Td_ls)
        if ( kin ) then     ! Aerosols
           B = k_rain
        else                ! Gases 
@@ -2959,7 +2962,7 @@ CONTAINS
        endif ! kin
        BT = B * Td_ls
        if (BT.gt.10.) BT = 10.               !< Avoid overflow >
-!      Adjust du level:
+       !      Adjust du level: 
        do n = 1, nbins
         effRemoval = fwet
         DC(n) = aerosol(i,j,k) * F * effRemoval *(1.-exp(-BT))
@@ -2992,7 +2995,7 @@ CONTAINS
          end if
         end do
         k_rain = 1.0e-4 + Qmx / (1.5e-3)
-        F = Qmx / (k_rain * 1.5e-3)
+        F = F0_ls * Qmx * cdt / (L_ls * (C1_min_ls + Qmx / L_ls) * Td_ls)
         if (F.lt.0.01) F = 0.01
 !-----------------------------------------------------------------------------
 !  The following is to convert Q(k) from kgH2O/m3/sec to mm/sec in order
@@ -3042,12 +3045,45 @@ CONTAINS
             !------------------------
             WASHFRAC = 0d0
            ENDIF
+        else ! aerosols
+           ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
+           if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K 
+              if (radius*1e-6 < .5) then ! FINE AEROSOLS
+                 if (phobic) then ! PHOBIC
+                    WASHFRAC = F * ( 1d0  - EXP(-5.0D-7 * (Qmx / F * 3.6D+4) ** 0.7d0 * cdt))
+                 else ! PHILIC 
+                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (Qmx / F * 3.6D+4) ** 0.7d0 * cdt))
+                 endif
+              else ! COARSE AEROSOLS
+                 WASHFRAC = F * (1d0 - EXP(-2.e-4 * (Qmx / F * 3.6D+4) ** 0.85 * cdt))
+              endif
+           else if (tmpu(i,j,k) >= 248.d0) then ! 268 K > T >= 248 K 
+              if (radius*1e-6 < 0.5) then ! FINE AEROSOLS
+                 if (phobic) then ! PHOBIC
+                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
+                 else ! PHILIC
+                    WASHFRAC = F * ( 1d0  - EXP(-2.0D-4 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
+                 endif
+              else ! COARSE
+                 WASHFRAC = F * (1d0 - EXP(-2.e-4 * (Qmx / F * 3.6D+4) ** 0.7 * cdt))
+              endif
+           else ! T < 248 K
+              if (radius*1e-6 < .5) then ! FINE AEROSOLS
+                 if (phobic) then ! PHOBIC
+                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 / 0.5d0 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
+                 else ! PHILIC
+                    WASHFRAC = F * ( 1d0  - EXP(-2.0D-4/0.5d0 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
+                 endif
+              else ! COARSE
+                 WASHFRAC = F * (1d0 - EXP(-2.e-3 * (Qmx / F * 3.6D+4) ** 0.7 * cdt))
+              endif
+           endif
         endif
-
+            
 !       Adjust du level:
         do n = 1, nbins
          if ( KIN ) then
-            DC(n) = aerosol(i,j,k) * F * (1.-exp(-BT))
+            DC(n) = aerosol(i,j,k) * WASHFRAC ! EXPT already applied in WASHFRAC for aerosols 
          else
             DC(n) = aerosol(i,j,k) * F * WASHFRAC
          endif

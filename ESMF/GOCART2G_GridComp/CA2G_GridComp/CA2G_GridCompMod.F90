@@ -1052,10 +1052,18 @@ contains
         call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-      else if (self%wetdep_opt == 2) then
-        call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
-                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, fcld, WT, __RC__)
+     else if (self%wetdep_opt == 2) then
+        if ( n == 1 ) then
+          
+           call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                             .true., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), phobic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+        else
+                 
+           call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), philic, ple, t, airdens, &
+                pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+        endif
       end if
     end do
 
