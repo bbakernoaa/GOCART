@@ -2969,7 +2969,7 @@ CONTAINS
         if (effRemoval < 1e-4) then
          DC(n) = 0.  
         else
-         DC(n) = aerosol(i,j,k) * F * effRemoval *(1.-exp(-BT))
+         DC(n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT))
         endif  
         if (DC(n).lt.0.) DC(n) = 0.
         aerosol(i,j,k) = aerosol(i,j,k)-DC(n)
@@ -3011,14 +3011,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
 
 !       Aerosols
-        Qd = Qmx /rhoa(i,j,k)*pdog(i,j,k)
-        if (Qd.ge.50.) then
-         B = 0.
-        else
-         B = Qd * 0.1
-        end if
-        BT = B * cdt
-        if (BT.gt.10.) BT = 10.
+        PP = (PFLLSAN(i,j,k)/1000d0 + PFILSAN(i,j,k)/917d0 )*100d0 ! from kg H2O/m2/s to cm3 H2O/cm2/s
 
 !       Gases
         if ( .not. KIN ) then
@@ -3052,67 +3045,73 @@ CONTAINS
             WASHFRAC = 0d0
            ENDIF
         else ! aerosols
-         if ( Qmx <=1e-10 ) then ! no washout
-          WASHFRAC = 0d0
-         else 
          if (washout_opt == 1) then
-           ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
-           if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K 
-              if (radius*1e-6 < .5) then ! FINE AEROSOLS
-                 if (phobic) then ! PHOBIC
-                    WASHFRAC = F * ( 1d0  - EXP(-5.0D-7 * (Qmx / F * 3.6D+4) ** 0.7d0 * cdt))
-                 else ! PHILIC 
-                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (Qmx / F * 3.6D+4) ** 0.7d0 * cdt))
-                 endif
-              else ! COARSE AEROSOLS
-                 WASHFRAC = F * (1d0 - EXP(-2.e-4 * (Qmx / F * 3.6D+4) ** 0.85 * cdt))
-              endif
-           else if (tmpu(i,j,k) >= 248.d0) then ! 268 K > T >= 248 K 
-              if (radius*1e-6 < 0.5) then ! FINE AEROSOLS
-                 if (phobic) then ! PHOBIC
-                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
-                 else ! PHILIC
-                    WASHFRAC = F * ( 1d0  - EXP(-2.0D-4 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
-                 endif
-              else ! COARSE
-                 WASHFRAC = F * (1d0 - EXP(-2.e-4 * (Qmx / F * 3.6D+4) ** 0.7 * cdt))
-              endif
-           else ! T < 248 K
-              if (radius*1e-6 < .5) then ! FINE AEROSOLS
-                 if (phobic) then ! PHOBIC
-                    WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 / 0.5d0 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
-                 else ! PHILIC
-                    WASHFRAC = F * ( 1d0  - EXP(-2.0D-4/0.5d0 * (Qmx / F * 3.6D+4) ** 0.66d0 * cdt))
-                 endif
-              else ! COARSE
-                 WASHFRAC = F * (1d0 - EXP(-2.e-3 * (Qmx / F * 3.6D+4) ** 0.7 * cdt))
-              endif
-           endif
-         else 
-            if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K
-               if (radius*1e6 < 0.5) then ! FINE AEROSOLS
-                  WASHFRAC = F * ( 1d0  - EXP(-1.06e-3 * (Qmx / F * 3.6D+4) ** 0.61d0 * cdt))
+            ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
+            if ( tmpu(i,j,k) >= 268d0 ) then 
+               !--------------
+               ! T > 268 K 
+               !--------------
+               if (radius*1e-6 < .5) then ! FINE AEROSOLS
+                  if (phobic) then ! PHOBIC
+                       WASHFRAC = F * ( 1d0  - EXP(-5.0D-7 * (PP / F * 3.6D+4) ** 0.7d0 * cdt))
+                  else ! PHILIC 
+                     WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (PP / F * 3.6D+4) ** 0.7d0 * cdt))
+                  endif
                else ! COARSE AEROSOLS
-                  WASHFRAC = F * (1d0 - EXP(-0.92 * (Qmx / F * 3.6D+4) ** 0.79 * cdt))
+                   WASHFRAC = F * (1d0 - EXP(-2.e-4 * (PP / F * 3.6D+4) ** 0.85 * cdt))
+               endif
+            else if (tmpu(i,j,k) >= 248.d0) then 
+               !---------------------
+               !    268 K > T >= 248 K 
+               !---------------------
+               if (radius*1e-6 < 0.5) then ! FINE AEROSOLS
+                  if (phobic) then ! PHOBIC
+                     WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 * (PP / F * 3.6D+4) ** 0.66d0 * cdt))
+                  else ! PHILIC
+                     WASHFRAC = F * ( 1d0  - EXP(-2.0D-4 * (PP / F * 3.6D+4) ** 0.66d0 * cdt))
+                  endif
+               else ! COARSE
+                  WASHFRAC = F * (1d0 - EXP(-2.e-4 * (PP / F * 3.6D+4) ** 0.7 * cdt))
+               endif
+            else 
+               !-------------
+               ! T < 248 K
+               !-------------
+               if (radius*1e-6 < .5) then ! FINE AEROSOLS
+                  if (phobic) then ! PHOBIC
+                     WASHFRAC = F * ( 1d0  - EXP(-1.0D-5 / 0.5d0 * (PP / F * 3.6D+4) ** 0.66d0 * cdt))
+                  else ! PHILIC
+                     WASHFRAC = F * ( 1d0  - EXP(-2.0D-4/0.5d0 * (PP / F * 3.6D+4) ** 0.66d0 * cdt))
+                  endif
+               else ! COARSE
+                  WASHFRAC = F * (1d0 - EXP(-2.e-3 * (PP / F * 3.6D+4) ** 0.7 * cdt))
+               endif
+             endif
+         else 
+            if ( tmpu(i,j,k) >= 268d0 ) then 
+               !--------------
+               ! T > 268 K 
+               !--------------
+               if (radius*1e6 < 0.5) then ! FINE AEROSOLS
+                  WASHFRAC = F * ( 1d0  - EXP(-1.06e-3 * (PP / F * 3.6D+4) ** 0.61d0 * cdt))
+               else ! COARSE AEROSOLS
+                  WASHFRAC = F * (1d0 - EXP(-0.92 * (PP / F * 3.6D+4) ** 0.79 * cdt))
                endif 
             else ! T < 268 K
                if (radius*1e6 < 0.5) then ! FINE AEROSOLS
-                  WASHFRAC = F * ( 1d0  - EXP(-2.6e+1 * (1.06e-3) * (Qmx / F * 3.6D+4) ** 0.96 * cdt))
+                  WASHFRAC = F * ( 1d0  - EXP(-2.6e+1 * (1.06e-3) * (PP / F * 3.6D+4) ** 0.96 * cdt))
                else ! COARSE AEROSOLS
-                  WASHFRAC = F * (1d0 - EXP(-1.57 / 0.5d0 * (Qmx / F * 3.6D+4) ** 0.96 * cdt))
+                  WASHFRAC = F * (1d0 - EXP(-1.57 / 0.5d0 * (PP / F * 3.6D+4) ** 0.96 * cdt))
                endif
-            endif 
+            endif
          endif 
+         WASHFRAC = MAX(MIN(WASHFRAC, 1.0d0), 0.0d0)
         endif
             
 !       Adjust du level:
         do n = 1, nbins
          if ( KIN ) then
-            if (WASHFRAC > 10) then 
-               DC(n) = 0.0
-            else
-               DC(n) = aerosol(i,j,k) * WASHFRAC ! EXPT already applied in WASHFRAC for aerosols 
-            endif 
+            DC(n) = aerosol(i,j,k) * WASHFRAC ! EXPT already applied in WASHFRAC for aerosols 
          else
             DC(n) = aerosol(i,j,k) * F * WASHFRAC
          endif

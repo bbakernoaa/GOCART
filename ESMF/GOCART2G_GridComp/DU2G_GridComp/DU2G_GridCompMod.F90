@@ -996,21 +996,19 @@ contains
 !  ----------------------------
    KIN = .TRUE.
    do n = 1, self%nbins
-      fwet = self%fwet(n)
-      if (self%wetdep_opt == 1) then
-              
-        call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+    fwet = self%fwet(n)
+    select case (self%wetdep_opt)
+    case(1)
+        call WetRemovalGOCART2G(sel%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
                               KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
-
-      else if (self%wetdep_opt == 2) then
-
+    case(2) ! New Wet Removal option 
         call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
                               .false., KIN, MAPL_GRAV, fwet, self%radius(n),DU(:,:,:,n), ple, t, airdens, &
-                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt,DUWT, __RC__)
+                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, DUWT, __RC__)
+    end select 
 
-      end if
-   end do
+   enddo
 
 !  Compute diagnostics
 !  -------------------
