@@ -45,6 +45,9 @@ real, parameter ::  cpd    = 1004.16
        real, allocatable      :: rlow(:)        ! particle effective radius lower bound [um]
        real, allocatable      :: rup(:)         ! particle effective radius upper bound [um]
        real, allocatable      :: rmed(:)        ! number median radius [um]
+       real, allocatable      :: fwet(:)        ! large scale scavinging efficiency - fwet
+       integer                :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
+       integer                :: washout_opt    ! NOAA Wet Removal option for temperature dependence washout option:1 - Yes, 0 - No
        integer                :: sstEmisFlag    ! Choice of SST correction to emissions:
 !                                                 0 - none; 1 - Jaegle et al. 2011; 2 - GEOS5
        logical                :: hoppelFlag     ! Apply the Hoppel correction to emissions (Fan and Toon, 2011)
@@ -127,7 +130,7 @@ contains
     ! process generic config items
     call self%GA_Environment%load_from_config( cfg, universal_cfg, __RC__)
 
-    allocate(self%rlow(self%nbins), self%rup(self%nbins), self%rmed(self%nbins), __STAT__)
+    allocate(self%rlow(self%nbins), self%rup(self%nbins), self%rmed(self%nbins), self%fwet(self%nbins),__STAT__)
 
     ! process SS-specific items
 !    call ESMF_ConfigGetAttribute (cfg, self%fscav,      label='fscav:', __RC__)
@@ -139,6 +142,17 @@ contains
     call ESMF_ConfigGetAttribute (cfg, self%rlow, label='radius_lower:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%rup, label='radius_upper:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%rmed, label='particle_radius_number:', __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label='fwet:', __RC__)
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label='wetdep_opt:', __RC__)
+
+    select case (self%wetdep_opt)
+    case (1)
+        ! do nothing for default 
+    case (2)
+        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label='washout_opt:', __RC__)
+    case default
+        _ASSERT_RC(.false., "Unallowed wetdep_opt scheme: Allowed: 1, 2", ESMF_RC_NOT_IMPL)
+    end select
 
 !   Is SS data driven?
 !   ------------------
@@ -814,10 +828,18 @@ contains
 !   ------------------------
     KIN = .TRUE.
     do n = 1, self%nbins
-       fwet = 1.
-       call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
-                               KIN, MAPL_GRAV, fwet, SS(:,:,:,n), ple, t, airdens, &
+       if (self%wetdep_opt == 1) then 
+       
+         call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
+                               KIN, MAPL_GRAV, self%fwet(n), SS(:,:,:,n), ple, t, airdens, &
                                pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, SSWT, __RC__)
+       else if (self%wetdep_opt == 2) then
+
+         call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
+                               .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), SS(:,:,:,n), ple, t, airdens, &
+                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, SSWT, __RC__)
+
+       end if
     end do
 
 !   Compute diagnostics
