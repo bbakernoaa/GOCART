@@ -2754,7 +2754,7 @@ CONTAINS
    real, pointer, dimension(:,:,:), intent(in)  :: pfilsan ! 3D flux of ice nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precc   ! surface convective rain flux [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precl   ! Non-convective precipitation [kg/(m^2 sec)]
-   integer, intent(in) :: washout_opt     ! Temperature depence of washout option (1 = yes, 0 = no)
+   integer, intent(in) :: washout_opt     ! Temperature depence of washout option (1 = yes else no )
    real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]
 
    ! real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
@@ -2966,7 +2966,11 @@ CONTAINS
        !      Adjust du level: 
        do n = 1, nbins
         effRemoval = fwet
-        DC(n) = aerosol(i,j,k) * F * effRemoval *(1.-exp(-BT))
+        if (effRemoval < 1e-4) then
+         DC(n) = 0.  
+        else
+         DC(n) = aerosol(i,j,k) * F * effRemoval *(1.-exp(-BT))
+        endif  
         if (DC(n).lt.0.) DC(n) = 0.
         aerosol(i,j,k) = aerosol(i,j,k)-DC(n)
         aerosol(i,j,k) = MAX(aerosol(i,j,k), 1.0E-32) 
@@ -2997,7 +3001,7 @@ CONTAINS
         end do
         k_rain = 1.0e-4 + Qmx / (1.5e-3)
         F = F0_ls * Qmx * cdt / (L_ls * (C1_min_ls + Qmx / L_ls) * Td_ls)
-        if (F.lt.0.01) F = 0.01
+      !   if (F.lt.0.01) F = 0.01
 !-----------------------------------------------------------------------------
 !  The following is to convert Q(k) from kgH2O/m3/sec to mm/sec in order
 !  to use the Harvard formula.  Convert back to mixing ratio by multiplying
@@ -3018,6 +3022,7 @@ CONTAINS
 
 !       Gases
         if ( .not. KIN ) then
+           if (F.lt.0.01) F = 0.01
            IF ( tmpu(i,j,k) >= 268d0 ) THEN
             !------------------------
             ! T >= 268K: Do washout
@@ -3047,6 +3052,9 @@ CONTAINS
             WASHFRAC = 0d0
            ENDIF
         else ! aerosols
+         if ( Qmx <=1e-10 ) then ! no washout
+          WASHFRAC = 0d0
+         else 
          if (washout_opt == 1) then
            ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
            if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K 
@@ -3100,7 +3108,11 @@ CONTAINS
 !       Adjust du level:
         do n = 1, nbins
          if ( KIN ) then
-            DC(n) = aerosol(i,j,k) * WASHFRAC ! EXPT already applied in WASHFRAC for aerosols 
+            if (WASHFRAC > 10) then 
+               DC(n) = 0.0
+            else
+               DC(n) = aerosol(i,j,k) * WASHFRAC ! EXPT already applied in WASHFRAC for aerosols 
+            endif 
          else
             DC(n) = aerosol(i,j,k) * F * WASHFRAC
          endif
@@ -3114,89 +3126,8 @@ CONTAINS
         end do
 
        end if
+       endif 
       end if                                    ! if ls washout  >>>
-
-!-----------------------------------------------------------------------------
-!  (3) CONVECTIVE RAINOUT:
-!      Tracer loss by rainout = dd0 * F * exp(-B*dt)
-!        where B = precipitation frequency,
-!              F = fraction of grid box covered by precipitating clouds.
-!-----------------------------------------------------------------------------
-
-      if (qcv(k) .gt. 0.) then
-       k_rain = 1.0e-4 + qcv(k) / 2.0e-6
-       F = ( F0_cv * qcv(k) * MIN(cdt / Td_cv, 1.0) ) / ( qcv(k) * MIN(cdt / Td_cv, 1.0) + F0_cv * k_rain * 2.0e-6 ) 
-       BT = k_rain * Td_cv
-       if (BT.gt.10.) BT = 10.               !< Avoid overflow >
-
-!      Adjust du level:
-       do n = 1, nbins
-        effRemoval = fwet
-        DC(n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT))
-        if (DC(n).lt.0.) DC(n) = 0.
-        aerosol(i,j,k) = aerosol(i,j,k)-DC(n)
-        aerosol(i,j,k) = MAX(aerosol(i,j,k), 1.0E-32) 
-       end do
-
-!------  Flux down:  unit is kg. Including both ls and cv.
-       do n = 1, nbins
-        Fd(k,n) = Fd(k,n) + DC(n)*pdog(i,j,k)
-       end do
-
-      end if                                  ! if Qcv > 0   >>>
-
-!-----------------------------------------------------------------------------
-!  (4) CONVECTIVE WASHOUT:
-!      Occurs when rain at this level is less than above.
-!-----------------------------------------------------------------------------
-
-      if (k.gt.LH .and. Qcv(k).ge.0.) then
-       if (Qcv(k).lt.Qcv(k-1)) then
-!-----  Find a maximum F overhead until the level where Qls<0.
-        Qmx   = 0.
-        do kk = k-1, LH, -1
-         if (Qcv(kk).gt.0.) then
-          Qmx = max(Qmx,Qcv(kk))
-         else
-          exit
-         end if
-        end do
-
-        k_rain = 1.0e-4 + Qmx / 2.0e-6
-        F = ( F0_cv * Qmx * MIN(cdt / Td_cv, 1.0) ) / ( Qmx * MIN(cdt / Td_cv, 1.0) + F0_cv * k_rain * 2.0e-6 )
-        if (F.lt.0.01) F = 0.01
-
-!-----------------------------------------------------------------------------
-!  The following is to convert Q(k) from kgH2O/m3/sec to mm/sec in order
-!  to use the Harvard formula.  Convert back to mixing ratio by multiplying
-!  by rhoa.  Multiply by pdog gives kg/m2/s of precip.  Divide by density
-!  of water (=1000 kg/m3) gives m/s of precip and multiply by 1000 gives
-!  units of mm/s (omit the multiply and divide by 1000).
-!-----------------------------------------------------------------------------
-
-        Qd = Qmx / rhoa(i,j,k)*pdog(i,j,k)
-        if (Qd.ge.50.) then
-         B = 0.
-        else
-         B = Qd * 0.1
-        end if
-        BT = B * cdt
-        if (BT.gt.10.) BT = 10.
-
-!       Adjust du level:
-        do n = 1, nbins
-         DC(n) = aerosol(i,j,k) * F * (1.-exp(-BT))
-         if (DC(n).lt.0.) DC(n) = 0.
-         aerosol(i,j,k) = aerosol(i,j,k)-DC(n)
-         if (aerosol(i,j,k) .lt. 1.0E-32) &
-          aerosol(i,j,k) = 1.0E-32
-         if( associated(fluxout)) then
-          fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind)+DC(n)*pdog(i,j,k)/cdt
-         endif
-        end do
-
-       end if
-      end if                                    ! if cv washout  >>>
 
 !-----------------------------------------------------------------------------
 !  (5) RE-EVAPORATION.  Assume that SO2 is re-evaporated as SO4 since it
