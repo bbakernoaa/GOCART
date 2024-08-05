@@ -836,8 +836,8 @@ contains
        else if (self%wetdep_opt == 2) then
 
          call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
-                               KIN, MAPL_GRAV, self%fwet(n), SS(:,:,:,n), ple, t, airdens, &
-                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, fcld, SSWT, __RC__)
+                               .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), SS(:,:,:,n), ple, t, airdens, &
+                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, SSWT, __RC__)
 
        end if
     end do
