@@ -64,6 +64,7 @@ module DU2G_GridCompMod
        real                   :: Ch_DU          ! dust emission tuning coefficient [kg s2 m-5].
        real, allocatable      :: fwet(:)        ! large scale scavenging efficiency - fwet 
        integer                :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
+       integer                :: washout_opt    ! NOAA Wet Removal option for temperature dependence washout option:1 - Yes, 0 - No
        logical                :: maringFlag=.false.  ! maring settling velocity correction
        integer                :: day_save = -1
        character(len=:), allocatable :: emission_scheme     ! emission scheme selector
@@ -211,7 +212,7 @@ contains
     case (1)
         ! do nothing for default 
     case (2)
-        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label='washout_opt:', __RC__)
+        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label="washout_opt:", __RC__)
     case default
         _ASSERT_RC(.false., "Unallowed wetdep_opt scheme: Allowed: 1, 2", ESMF_RC_NOT_IMPL)
     end select
