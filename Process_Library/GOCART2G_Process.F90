@@ -2728,7 +2728,7 @@ CONTAINS
 
    subroutine NOAAWetRemoval ( km, klid, n1, n2, bin_ind, cdt, aero_type, phobic, kin, grav, fwet, &
                               radius, aerosol, ple, tmpu, rhoa, pfllsan, pfilsan, &
-                              precc, precl, fluxout, rc) ! , LWC_, IWC_ )
+                              precc, precl, washout_opt, fluxout, rc) ! , LWC_, IWC_ )
 
 ! !USES:
    implicit NONE
@@ -2754,6 +2754,7 @@ CONTAINS
    real, pointer, dimension(:,:,:), intent(in)  :: pfilsan ! 3D flux of ice nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precc   ! surface convective rain flux [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precl   ! Non-convective precipitation [kg/(m^2 sec)]
+   integer, intent(in) :: washout_opt     ! Temperature depence of washout option (1 = yes, 0 = no)
    real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]
 
    ! real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
@@ -3046,6 +3047,7 @@ CONTAINS
             WASHFRAC = 0d0
            ENDIF
         else ! aerosols
+         if (washout_opt == 1) then
            ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
            if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K 
               if (radius*1e-6 < .5) then ! FINE AEROSOLS
@@ -3078,6 +3080,21 @@ CONTAINS
                  WASHFRAC = F * (1d0 - EXP(-2.e-3 * (Qmx / F * 3.6D+4) ** 0.7 * cdt))
               endif
            endif
+         else 
+            if ( tmpu(i,j,k) >= 268d0 ) then ! T > 268 K
+               if (radius*1e6 < 0.5) then ! FINE AEROSOLS
+                  WASHFRAC = F * ( 1d0  - EXP(-1.06e-3 * (Qmx / F * 3.6D+4) ** 0.61d0 * cdt))
+               else ! COARSE AEROSOLS
+                  WASHFRAC = F * (1d0 - EXP(-0.92 * (Qmx / F * 3.6D+4) ** 0.79 * cdt))
+               endif 
+            else ! T < 268 K
+               if (radius*1e6 < 0.5) then ! FINE AEROSOLS
+                  WASHFRAC = F * ( 1d0  - EXP(-2.6e+1 * (1.06e-3) * (Qmx / F * 3.6D+4) ** 0.96 * cdt))
+               else ! COARSE AEROSOLS
+                  WASHFRAC = F * (1d0 - EXP(-1.57 / 0.5d0 * (Qmx / F * 3.6D+4) ** 0.96 * cdt))
+               endif
+            endif 
+         endif 
         endif
             
 !       Adjust du level:

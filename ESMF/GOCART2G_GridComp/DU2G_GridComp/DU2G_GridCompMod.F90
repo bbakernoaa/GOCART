@@ -207,6 +207,14 @@ contains
 !   Get Wet deposition option
 !   ------------------------
     call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
+    select case (self%wetdep_opt)
+    case (1)
+        ! do nothing for default 
+    case (2)
+        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label='washout_opt:', __RC__)
+    case default
+        _ASSERT_RC(.false., "Unallowed wetdep_opt scheme: Allowed: 1, 2", ESMF_RC_NOT_IMPL)
+    end select
 
 !   Is DU data driven?
 !   ------------------
