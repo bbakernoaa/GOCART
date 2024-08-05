@@ -3044,7 +3044,7 @@ CONTAINS
             !------------------------
             WASHFRAC = 0d0
            ENDIF
-        else ! aerosols
+        else
          if (washout_opt == 1) then
             ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
             if ( tmpu(i,j,k) >= 268d0 ) then 
@@ -3059,7 +3059,7 @@ CONTAINS
                   endif
                else ! COARSE AEROSOLS
                    WASHFRAC = F * (1d0 - EXP(-2.e-4 * (PP / F * 3.6D+4) ** 0.85 * cdt))
-               endif
+               endif ! radius
             else if (tmpu(i,j,k) >= 248.d0) then 
                !---------------------
                !    268 K > T >= 248 K 
@@ -3072,7 +3072,7 @@ CONTAINS
                   endif
                else ! COARSE
                   WASHFRAC = F * (1d0 - EXP(-2.e-4 * (PP / F * 3.6D+4) ** 0.7 * cdt))
-               endif
+               endif ! radius
             else 
                !-------------
                ! T < 248 K
@@ -3085,9 +3085,9 @@ CONTAINS
                   endif
                else ! COARSE
                   WASHFRAC = F * (1d0 - EXP(-2.e-3 * (PP / F * 3.6D+4) ** 0.7 * cdt))
-               endif
-             endif
-         else 
+               endif ! radius
+            endif ! tmpu
+         else if (washout_opt == 2) then        
             if ( tmpu(i,j,k) >= 268d0 ) then 
                !--------------
                ! T > 268 K 
@@ -3103,10 +3103,10 @@ CONTAINS
                else ! COARSE AEROSOLS
                   WASHFRAC = F * (1d0 - EXP(-1.57 / 0.5d0 * (PP / F * 3.6D+4) ** 0.96 * cdt))
                endif
-            endif
-         endif 
+            endif ! T
+         endif ! washOUT_OPT
          WASHFRAC = MAX(MIN(WASHFRAC, 1.0d0), 0.0d0)
-        endif
+      endif 
             
 !       Adjust du level:
         do n = 1, nbins
@@ -3123,10 +3123,9 @@ CONTAINS
 
          endif
         end do
+      end if
 
-       end if
-       endif 
-      end if                                    ! if ls washout  >>>
+      end if
 
 !-----------------------------------------------------------------------------
 !  (5) RE-EVAPORATION.  Assume that SO2 is re-evaporated as SO4 since it
