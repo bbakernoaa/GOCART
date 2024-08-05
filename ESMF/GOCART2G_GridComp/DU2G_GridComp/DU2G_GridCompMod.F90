@@ -999,7 +999,7 @@ contains
     fwet = self%fwet(n)
     select case (self%wetdep_opt)
     case(1)
-        call WetRemovalGOCART2G(sel%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+        call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
                               KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
     case(2) ! New Wet Removal option 
