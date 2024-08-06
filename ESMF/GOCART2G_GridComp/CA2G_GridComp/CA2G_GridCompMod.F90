@@ -1070,11 +1070,11 @@ contains
             call MAPL_GetPointer(internal, NAME=short_name, ptr=int_ptr, __RC__)
             if (n == 1) then 
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .true., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), int_ptr, ple, t, airdens, &
+                             .true., KIN, MAPL_GRAV, self%fwet, self%radius, int_ptr, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             else 
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), int_ptr, ple, t, airdens, &
+                             .false., KIN, MAPL_GRAV, self%fwet, self%radius, int_ptr, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             end if 
         end do

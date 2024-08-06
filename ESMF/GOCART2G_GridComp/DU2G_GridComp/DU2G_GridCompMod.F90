@@ -1006,7 +1006,7 @@ contains
     case(2) ! New Wet Removal option 
         do n = 1, self%nbins
             call NewWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
-                              .false., KIN, MAPL_GRAV, fwet, self%radius(n),DU(:,:,:,n), ple, t, airdens, &
+                              .false., KIN, MAPL_GRAV, self%fwet, self%radius, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, DUWT, __RC__)
         enddo
    end select 

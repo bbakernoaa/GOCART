@@ -2912,8 +2912,8 @@ CONTAINS
    logical, intent(in) :: phobic         ! phobic flag 
    logical, intent(in) :: KIN            ! true for aerosol
    real, intent(in)    :: grav           ! gravity [m/sec^2]
-   real, intent(in)    :: radius         ! radius [m]
-   real, pointer, dimension(:)           :: fwet           ! wet scavenging coefficient [-]
+   real, allocatable, dimension(:)           :: radius         ! radius [m]
+   real, allocatable, dimension(:)           :: fwet           ! wet scavenging coefficient [-]
    real, dimension(:,:,:), intent(inout) :: aerosol        ! internal state aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: ple     ! pressure level thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu    ! temperature [K]
@@ -3165,7 +3165,7 @@ CONTAINS
             QDOWN = MAX(QDOWN, 0.01) 
 
             F = F_WASH + F_RAIN
-            if (.not. KIN) then 
+            if (.not. KIN) then ! Gas 
                if (tmpu(i,j,k) >= 268d0 ) then 
                   !------------------------
                   ! T >= 268K: Do washout
@@ -3184,19 +3184,33 @@ CONTAINS
                   WASHFRAC_F_14 = 1d0 - EXP( -K_WASH * ( QDOWN / F ) * cdt )
 
                   WASHFRAC = MIN(WASHFRAC, WASHFRAC_F_14) * F 
+               else
+                  WASHFRAC = 0.
                endif
-            else 
-               WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
-               ! Adjust WASHFRAC by the total precipation 
-               WASHFRAC = WASHFRAC / F * F_WASH 
-            endif
 
-            ! Apply washout 
-            do n = 1, nbins 
-               DC(k,n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
-               DC(K,n) = MAX(DC(k,n), 0d0)
-               aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n) ! Apply to concentration
-            enddo 
+               ! Apply washout
+               do n = 1, nbins
+                  DC(k,n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+                  DC(K,n) = MAX(DC(k,n), 0d0)
+                  aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n) ! Apply to concentration
+               enddo
+
+               fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(k,n) * pdog(i,j,k) / cdt
+               
+            else ! Aerosol
+
+               do n = 1, nbins
+                  WASHFRAC = WASHFRAC_AERO(washout_opt, radius(n), tmpu(i,j,k), QDOWN, F, cdt, phobic)
+                  ! Adjust WASHFRAC by the total precipation 
+                  WASHFRAC = WASHFRAC / F * F_WASH
+                  ! WASHOUT Wet Deposition
+                  DC(k,n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+                  DC(K,n) = MAX(DC(k,n), 0d0)
+                  ! Apply to concentration
+                  aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n)
+               enddo
+               
+            endif
 
             fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(k,n) * pdog(i,j,k) / cdt
 
@@ -3255,23 +3269,37 @@ CONTAINS
                ! Note: WASHFRAC_F_14 should match what's used for HNO3 (hma, 13aug2011)
                WASHFRAC_F_14 = 1d0 - EXP( -K_WASH * ( QDOWN / F ) * cdt )
 
-               WASHFRAC = MIN(WASHFRAC, WASHFRAC_F_14) * F 
-            endif
-         else 
-            WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
-            ! Adjust WASHFRAC by the total precipation 
-            WASHFRAC = WASHFRAC / F * F_WASH 
-         endif
+               WASHFRAC = MIN(WASHFRAC, WASHFRAC_F_14) * F
+            else
+               WASHFRAC = 0d0
+            endif ! Temperature check 
 
-         ! Apply washout 
-         do n = 1, nbins 
-            DC(k,n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
-            DC(K,n) = MAX(DC(k,n), 0d0)
-            aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n) ! Apply to concentration
-         enddo 
+            ! Apply washout
+            do n = 1, nbins
+               DC(k,n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+               DC(K,n) = MAX(DC(k,n), 0d0)
+               aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n) ! Apply to concentration
+            enddo
 
-         fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(k,n) * pdog(i,j,k) / cdt
-      endif
+            fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(k,n) * pdog(i,j,k) / cdt
+            
+         else
+            do n = 1, nbins
+               WASHFRAC = WASHFRAC_AERO(washout_opt, radius(n), tmpu(i,j,k), QDOWN, F, cdt, phobic)
+               ! Adjust WASHFRAC by the total precipation 
+               WASHFRAC = WASHFRAC / F * F_WASH
+               ! WASHOUT Wet Deposition
+               DC(k,n) = aerosol(i,j,k) * WASHFRAC
+               DC(K,n) = MAX(DC(k,n), 0d0)
+               ! Apply to concentration
+               aerosol(i,j,k) = aerosol(i,j,k) - DC(k,n)
+            enddo
+
+            fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(k,n) * pdog(i,j,k) / cdt
+            
+         end if ! WASHOUT is KIN?
+         
+      endif ! WASHOUT PDOWN is Positive
 
       do n = 1, nbins
          if (associated(fluxout)) then 
