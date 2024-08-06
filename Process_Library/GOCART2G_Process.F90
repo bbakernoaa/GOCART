@@ -2757,7 +2757,7 @@ CONTAINS
 
 !==================================================================================
 !BOP
-   function K_RAIN_GAS(c_h2o, cldice, cldliq, Tk, , K_RAIN, Kstar298, H298_R  ) result( K_RAIN_GAS ) 
+   function K_RAIN_GAS(c_h2o, cldice, cldliq, Tk, K_RAIN, Kstar298, H298_R  ) result( K_RAIN_GAS ) 
 !
 ! !INPUT PARAMETERS:
 !
