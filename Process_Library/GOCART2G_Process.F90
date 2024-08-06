@@ -2795,7 +2795,7 @@ CONTAINS
       if ( tmpu(i,j,k) >= 268d0 ) then
          K_RAIN_GAS = K_RAIN * ( F_L+F_I )
       else if ( (248d0 < Tk) .and. (Tk < 268d0) ) then
-         K_RAIN_GAS = K_RAIN * ( F_L+F_I )
+         K_RAIN_GAS = K_RAIN * ( (0.05*F_L)+F_I )
       endif
 
    end function K_RAIN_GAS
@@ -2971,6 +2971,7 @@ CONTAINS
    real(kind=DP)  :: k_rain, Kstar298, H298_R, I2G, L2G, C_TOT, F_L, F_I
    real(kind=DP)  :: PP, LP
    real           :: COND_WATER
+   real           :: K_RAING
 
    logical :: snow_scavenging
 
