@@ -31,7 +31,7 @@
    public Chem_Settling2Gorig
    public Chem_SettlingSimpleOrig
    public DryDeposition
-   public NOAAWetRemoval
+   public NewWetRemoval
    public WetRemovalGOCART2G
    public UpdateAerosolState
    public Aero_Compute_Diags
@@ -2726,6 +2726,7 @@ CONTAINS
       real :: k_rain
 
       k_rain = c1_min + Q / COND_WATER
+      
    end function k_ls_rain
 
 !==================================================================================
@@ -2751,13 +2752,13 @@ CONTAINS
       ! For LS rainout set Td_ls = cdt 
       Td_ls = cdt 
 
-      F = F0 * Q * cdt / (L_ls * (C1_min_ls + Q / L_ls) * Td_ls)
+      F = F0 * Q * cdt / (L * (C1 + Q / L) * Td_ls)
 
-   end function F
+    end function F_LS_RAIN
 
 !==================================================================================
 !BOP
-   function K_RAIN_GAS(c_h2o, cldice, cldliq, Tk, K_RAIN, Kstar298, H298_R  ) result( K_RAIN_GAS ) 
+   function K_RAIN_GAS(c_h2o, cldice, cldliq, Tk, K_RAIN, Kstar298, H298_R  ) result( KGAS_RAIN ) 
 !
 ! !INPUT PARAMETERS:
 !
@@ -2765,9 +2766,9 @@ CONTAINS
       real, intent(in) :: cldice
       real, intent(in) :: cldliq
       real, intent(in) :: Tk
-      real, intent(in) :: K_RAIN 
-      real, intent(in) :: Kstar298
-      real, intent(in) :: H298_R
+      real(kind=DP), intent(in) :: K_RAIN 
+      real(kind=DP), intent(in) :: Kstar298
+      real(kind=DP), intent(in) :: H298_R
 
 ! !LOCAL VARIABLES:
 !
@@ -2778,7 +2779,7 @@ CONTAINS
 !
 ! !RETURN VALUE:
 !
-      real :: K_RAIN_GAS
+      real(kind=DP) :: KGAS_RAIN
 
       if ( c_h2o > 0.d0) then
          I2G = (cldice / c_h2o) * conv_NH3
@@ -2792,31 +2793,32 @@ CONTAINS
       F_L = L2G / C_TOT
       F_I = I2G / C_TOT
 
-      if ( tmpu(i,j,k) >= 268d0 ) then
-         K_RAIN_GAS = K_RAIN * ( F_L+F_I )
+      if ( Tk >= 268d0 ) then
+         KGAS_RAIN = K_RAIN * ( F_L+F_I )
       else if ( (248d0 < Tk) .and. (Tk < 268d0) ) then
-         K_RAIN_GAS = K_RAIN * ( (0.05*F_L)+F_I )
+         KGAS_RAIN = K_RAIN * ( (0.05*F_L)+F_I )
       endif
 
-   end function K_RAIN_GAS
+    end function K_RAIN_GAS
 
-   function WASHFRAC_AERO( washout_opt, radius, Tk, PDOWN, F, cdt) reasult( WASHFRAC_AERO )
-! 
+   function WASHFRAC_AERO( washout_opt, radius, Tk, PP, F, cdt, phobic) result( WASHFRAC_OUT )
+!     
 ! !INPUT PARAMETERS:
 !
       integer, intent(in) :: washout_opt      ! Washout option
       real, intent(in)    :: radius           ! Aerosol radius
       real, intent(in)    :: Tk               ! Temperature
-      real, intent(in)    :: PDOWN            ! Rain coming through top of grid box
+      real, intent(in)    :: PP               ! Rain coming through top of grid box
       real, intent(in)    :: F                ! fractional grid box wetness 
-      real, intent(in)    :: cdt              ! Timestep 
+      real, intent(in)    :: cdt              ! Timestep
+      logical, intent(in) :: phobic           ! Phobic = True Philic = False
 
 ! !LOCAL VARIABLES:
       real :: WASHFRAC
 !
 ! !RETURN VALUE:
 !
-      real :: WASHFRAC_AERO
+      real :: WASHFRAC_OUT
 
       if (washout_opt == 1) then
          ! Follows Luo et al. 2019 to add temperature dependence to the aerosol washout efficiency
@@ -2878,9 +2880,9 @@ CONTAINS
             endif
          endif ! T
       endif ! washOUT_OPT
-      WASHFRAC_AERO = MAX(MIN(WASHFRAC, 1.0d0), 0.0d0)
+      WASHFRAC_OUT = MAX(MIN(WASHFRAC, 1.0d0), 0.0d0)
    
-      end function WASHFRAC_AERO
+    end function WASHFRAC_AERO
 
 !==================================================================================
 ! !IROUTINE: NewWetRemoval - Calculate the wet removal terms for the GOCART model
@@ -2904,14 +2906,15 @@ CONTAINS
    integer, intent(in) :: n1             ! total number of bins (probably can be removed)
    integer, intent(in) :: n2             ! total number of bins (probably can be removed)
    integer, intent(in) :: bin_ind        ! bin index (usually the loop iteration)
+   integer, intent(in) :: washout_opt    ! Temperature depence of washout option (1 = yes else no )
    real, intent(in)    :: cdt            ! chemistry model time-step [sec]
    character(len=*)    :: aero_type
    logical, intent(in) :: phobic         ! phobic flag 
    logical, intent(in) :: KIN            ! true for aerosol
    real, intent(in)    :: grav           ! gravity [m/sec^2]
-   real, intent(in)    :: fwet(nbins)    ! wet scavenging coefficient [-]
    real, intent(in)    :: radius         ! radius [m]
-   real, dimension(:,:,:), intent(inout) :: aerosol  ! internal state aerosol [kg/kg]
+   real, pointer, dimension(:)           :: fwet           ! wet scavenging coefficient [-]
+   real, dimension(:,:,:), intent(inout) :: aerosol        ! internal state aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: ple     ! pressure level thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu    ! temperature [K]
    real, pointer, dimension(:,:,:), intent(in)  :: rhoa    ! moist air density [kg/m^3]
@@ -2919,11 +2922,7 @@ CONTAINS
    real, pointer, dimension(:,:,:), intent(in)  :: pfilsan ! 3D flux of ice nonconvective precipitation [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precc   ! surface convective rain flux [kg/(m^2 sec)]
    real, pointer, dimension(:,:), intent(in)    :: precl   ! Non-convective precipitation [kg/(m^2 sec)]
-   integer, intent(in) :: washout_opt     ! Temperature depence of washout option (1 = yes else no )
-   real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]
-
-   ! real, pointer, dimension(:,:,:), intent(in), optional :: LWC_ ! kg/m^3
-   ! real, pointer, dimension(:,:,:), intent(in), optional :: IWC_ ! kg/m^3
+   real, pointer, dimension(:,:,:)  :: fluxout ! tracer loss flux [kg m-2 s-1]   
 
 ! !OUTPUT PARAMETERS:
    integer, intent(out)             :: rc          ! Error return code:
@@ -2945,14 +2944,14 @@ CONTAINS
    real, allocatable, dimension(:,:,:) :: delz   ! box height  dp/g/rhoa [m]
    real :: pls, pac             ! ls, tot precip [mm day-1]
    real :: qls(km)
-   real :: qmx, qd, A                ! temporary variables on moisture
-   real :: F, B, BT                  ! temporary variables on cloud, freq.
+   real :: qmx, qd, A                 ! temporary variables on moisture
+   real :: F, B, BT, FTOP, QDOWN      ! temporary variables on cloud, freq.
    real :: WASHFRAC, WASHFRAC_F_14
-   real :: RAINFRAC                  ! rain fraction
-   real, allocatable :: fd(:,:)      ! flux across layers [kg m-2]
+   real :: F_RAIN, F_WASH             ! Fraction of grid cell due to rainout and washout
+   real, allocatable :: fd(:,:)       ! flux across layers [kg m-2]
    real, allocatable :: dpfli(:,:,:)  ! vertical gradient of LS ice+rain precip flux
-   real, allocatable :: DC(:,:)        ! scavenge change in mass mixing ratio
-   real, allocatable :: PDOWN(:,:,:)        ! precipitation falling through box 
+   real, allocatable :: DC(:,:)       ! scavenge change in mass mixing ratio
+   real, allocatable :: PDOWN(:,:,:)  ! precipitation falling through box
    real, allocatable, dimension(:,:,:) :: c_h2o, cldliq, cldice
    logical :: is_washout, is_rainout
 
@@ -2971,7 +2970,6 @@ CONTAINS
    real(kind=DP)  :: k_rain, Kstar298, H298_R, I2G, L2G, C_TOT, F_L, F_I
    real(kind=DP)  :: PP, LP
    real           :: COND_WATER
-   real           :: K_RAING
 
    logical :: snow_scavenging
 
@@ -3074,13 +3072,13 @@ CONTAINS
 
      if(LH .lt. 1) cycle
 
-     do k = klim, km  
+     do k = klid, km  
        qls(k) = dpfli(i,j,k) / delz(i,j,k) 
        PDOWN(i,j,k) = (PFLLSAN(i,j,k)/1000d0 + PFILSAN(i,j,k)/917d0 )*100d0
      end do
 
      ! Do top layer first - only RAINOUT in top layer
-     k = klim 
+     k = klid 
      if ( qls(k) > tiny(0.) ) then 
          ! Call the LS Rain function
          k_rain = k_ls_rain( C1_min_ls, qls(k), 1e-6 )
@@ -3096,14 +3094,16 @@ CONTAINS
          BT = B * Td_ls 
 
          do n = 1, nbins
-            effRemoval = fwet(n) 
+            ! Effective Wet Removal
+            effRemoval = fwet(n)
+            ! WETLOSS due to rainout 
             DC(k,n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT))
             DC(k,n) = MAX(DC(k,n), 0.d0)
-            Fd(k,n) = DC(k,n)*pdog(i,j,k) ! Flux down [kg m-2] 
+            ! Apply to aerosol concentrations
+            aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(k,n), 1.0E-32)
+            ! Flux down [kg m-2]
+            Fd(k,n) = DC(k,n)*pdog(i,j,k)
          enddo
-
-         ! Apply to aerosol concentrations
-         aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(k,1:nbins), 1.0E-32)
 
          ! Assign FTOP to this layer 
 
@@ -3112,7 +3112,7 @@ CONTAINS
       endif
 
 !    Loop over vertical to do the scavenging! - top to bottom 
-      do k = klim-1,km-1,-1
+      do k = klid-1,km-1,-1
 
          if ( qls(k) .lt. tiny(0.) ) cycle
 
@@ -3186,7 +3186,7 @@ CONTAINS
                   WASHFRAC = MIN(WASHFRAC, WASHFRAC_F_14) * F 
                endif
             else 
-               WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt)
+               WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
                ! Adjust WASHFRAC by the total precipation 
                WASHFRAC = WASHFRAC / F * F_WASH 
             endif
@@ -3212,10 +3212,10 @@ CONTAINS
                Fd(k,n) = Fd(k,n) + Fd(k-1,n)
             enddo
 
-            if (dfli(i,j,k) .lt. 0) then ! Evaporation in current layer
-               if (dplfi(i,j,k-1) .gt. 0) then ! Evaporation occuring 
+            if (dpfli(i,j,k) .lt. 0) then ! Evaporation in current layer
+               if (dpfli(i,j,k-1) .gt. 0) then ! Evaporation occuring 
 
-                  A = abs(dpfli(i,j,k) / dfpli(i,j,k-1))
+                  A = abs(dpfli(i,j,k) / dpfli(i,j,k-1))
                   A = MIN(A, 1.)
 
                   ! Adjust tracer in the level 
@@ -3258,7 +3258,7 @@ CONTAINS
                WASHFRAC = MIN(WASHFRAC, WASHFRAC_F_14) * F 
             endif
          else 
-            WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt)
+            WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
             ! Adjust WASHFRAC by the total precipation 
             WASHFRAC = WASHFRAC / F * F_WASH 
          endif
