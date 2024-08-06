@@ -827,20 +827,21 @@ contains
 !   Large-scale Wet Removal
 !   ------------------------
     KIN = .TRUE.
-    do n = 1, self%nbins
-       if (self%wetdep_opt == 1) then 
-       
-         call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
-                               KIN, MAPL_GRAV, self%fwet(n), SS(:,:,:,n), ple, t, airdens, &
-                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, SSWT, __RC__)
-       else if (self%wetdep_opt == 2) then
-
-         call NOAAWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
-                               .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), SS(:,:,:,n), ple, t, airdens, &
-                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, SSWT, __RC__)
-
-       end if
-    end do
+    select case (self%wetremoval)
+    case(1) 
+        do n = 1, self%nbins
+            fwet = self%fwet(self%nbins) ! Assume the last one represents fwet for all bins 
+            call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
+                            KIN, MAPL_GRAV, self%fwet(n), SS(:,:,:,n), ple, t, airdens, &
+                            pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, SSWT, __RC__)
+        enddo
+    case(2)
+        do n = 1, self%nbins
+            call NewWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
+                            .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), SS(:,:,:,n), ple, t, airdens, &
+                            pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, SSWT, __RC__)
+        enddo
+    end select
 
 !   Compute diagnostics
 !   -------------------

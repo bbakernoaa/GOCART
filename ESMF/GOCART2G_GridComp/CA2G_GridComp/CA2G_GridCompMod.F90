@@ -1056,29 +1056,29 @@ contains
 
     KIN = .true.
 !   Hydrophilic mode (second tracer) is removed
-    do n = 1, self%nbins 
-      if (self%wetdep_opt == 1) then
-        call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+    select case (self%wetdep_opt)
+     case(1)
+        fwet = self%fwet(self%nbins) ! Assume fwet is the last bin 
+        do n = 1, self%nbins 
+            call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
-     else if (self%wetdep_opt == 2) then
-        call MAPL_VarSpecGet(InternalSpec(n), SHORT_NAME=short_name, __RC__)
-        call MAPL_GetPointer(internal, NAME=short_name, ptr=int_ptr, __RC__)
-        if ( n == 1 ) then
-          
-           call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+        enddo
+     case(2)
+        do n = 1, self%nbins
+            call MAPL_VarSpecGet(InternalSpec(n), SHORT_NAME=short_name, __RC__)
+            call MAPL_GetPointer(internal, NAME=short_name, ptr=int_ptr, __RC__)
+            if (n == 1) then 
+                call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              .true., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), int_ptr, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
-        else
-                 
-           call NOAAWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+            else 
+                call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), int_ptr, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
-        endif
-      end if
-    end do
-
-    
+            end if 
+        end do
+    end select    
 
 !   Compute diagnostics
 !   -------------------
