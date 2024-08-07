@@ -2912,8 +2912,8 @@ CONTAINS
    logical, intent(in) :: phobic         ! phobic flag 
    logical, intent(in) :: KIN            ! true for aerosol
    real, intent(in)    :: grav           ! gravity [m/sec^2]
-   real,               :: radius         ! radius [m]
-   real,               :: fwet           ! wet scavenging coefficient [-]
+   real                :: radius         ! radius [m]
+   real                :: fwet           ! wet scavenging coefficient [-]
    real, dimension(:,:,:), intent(inout) :: aerosol        ! internal state aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: ple     ! pressure level thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu    ! temperature [K]
