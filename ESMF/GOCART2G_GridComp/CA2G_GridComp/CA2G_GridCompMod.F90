@@ -57,6 +57,9 @@ module CA2G_GridCompMod
        logical            :: diurnal_bb   ! diurnal biomass burning
        real               :: eAircraftfuel       ! Aircraft emission factor: go from kg fuel to kg C
        real               :: aviation_layers(4)  ! heights of the LTO, CDS and CRS layers
+       integer            :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
+       integer            :: washout_opt    ! NOAA Wet Removal option for temperature dependence washout option:1 - Yes, 0 - No
+       real, allocatable  :: fwet(:)
 !      !Workspae for point emissions
        logical                :: doing_point_emissions = .false.
        character(len=255)     :: point_emissions_srcfilen   ! filename for pointwise emissions
@@ -535,6 +538,23 @@ contains
     end if
 
     self%instance = instance
+
+!   Get large scale scavenging efficiency - fwet 
+!   --------------------------------------------
+    allocate(self%fwet(self%nbins), __STAT__)
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
+
+!   Get Wet deposition option
+!   ------------------------
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
+    select case (self%wetdep_opt)
+    case (1)
+        ! do nothing for default 
+    case (2)
+        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label='washout_opt:', __RC__)
+    case default
+        _ASSERT_RC(.false., "Unallowed wetdep_opt scheme: Allowed: 1, 2", ESMF_RC_NOT_IMPL)
+    end select
 
 !   Create Radiation Mie Table
 !   --------------------------
@@ -1033,14 +1053,32 @@ contains
 
 !   Large-scale Wet Removal
 !   -------------------------------
-!   Hydrophobic mode (first tracer) is not removed
-    if (associated(WT)) WT(:,:,1)=0.0
+
     KIN = .true.
 !   Hydrophilic mode (second tracer) is removed
-    fwet = 1.
-    call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, 2, self%cdt, GCsuffix, &
+    select case (self%wetdep_opt)
+     case(1)
+        fwet = self%fwet(self%nbins) ! Assume fwet is the last bin 
+        do n = 1, self%nbins 
+            call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
                              KIN, MAPL_GRAV, fwet, philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
+        enddo
+     case(2)
+        do n = 1, self%nbins
+            fwet = self%fwet(n)
+
+            if (n == 1) then 
+                call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                             .true., KIN, MAPL_GRAV, fwet, self%radius(n), intPtr_phobic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
+            else 
+                call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
+                             .false., KIN, MAPL_GRAV, fwet, self%radius(n),  intPtr_philic, ple, t, airdens, &
+                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
+            end if 
+        end do
+    end select    
 
 !   Compute diagnostics
 !   -------------------

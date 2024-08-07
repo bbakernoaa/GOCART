@@ -62,6 +62,9 @@ module DU2G_GridCompMod
        real                   :: f_sdl          ! FENGSHA drylimit tuning factor
        real                   :: Ch_DU_res(NHRES) ! resolutions used for Ch_DU
        real                   :: Ch_DU          ! dust emission tuning coefficient [kg s2 m-5].
+       real, allocatable      :: fwet(:)        ! large scale scavenging efficiency - fwet 
+       integer                :: wetdep_opt     ! 1 - WetRemovalGOCART, 2 - NOAAWetRemoval
+       integer                :: washout_opt    ! NOAA Wet Removal option for temperature dependence washout option:1 - Yes, 0 - No
        logical                :: maringFlag=.false.  ! maring settling velocity correction
        integer                :: day_save = -1
        character(len=:), allocatable :: emission_scheme     ! emission scheme selector
@@ -153,7 +156,7 @@ contains
     ! process generic config items
     call self%GA_Environment%load_from_config(cfg, universal_cfg, __RC__)
 
-    allocate(self%sfrac(self%nbins), self%rlow(self%nbins), self%rup(self%nbins), __STAT__)
+    allocate(self%sfrac(self%nbins), self%rlow(self%nbins), self%rup(self%nbins), self%fwet(self%nbins),__STAT__)
     ! process DU-specific items
     call ESMF_ConfigGetAttribute (cfg, self%maringFlag, label='maringFlag:', __RC__)
     call ESMF_ConfigGetAttribute (cfg, self%sfrac,      label='source_fraction:', __RC__)
@@ -196,6 +199,22 @@ contains
        ! nothing to do
     case default
        _ASSERT_RC(.false., "Unallowed emission scheme: "//trim(self%emission_scheme)//". Allowed: ginoux, k14, fengsha", ESMF_RC_NOT_IMPL)
+    end select
+
+!   Get large scale scavenging efficiency - fwet 
+!   --------------------------------------------
+    call ESMF_ConfigGetAttribute (cfg, self%fwet, label="fwet:", __RC__)
+
+!   Get Wet deposition option
+!   ------------------------
+    call ESMF_ConfigGetAttribute (cfg, self%wetdep_opt, label="wetdep_opt:", default=1, __RC__)
+    select case (self%wetdep_opt)
+    case (1)
+        ! do nothing for default 
+    case (2)
+        call ESMF_ConfigGetAttribute (cfg, self%washout_opt, label="washout_opt:", __RC__)
+    case default
+        _ASSERT_RC(.false., "Unallowed wetdep_opt scheme: Allowed: 1, 2", ESMF_RC_NOT_IMPL)
     end select
 
 !   Is DU data driven?
@@ -976,12 +995,21 @@ contains
 !  Dust Large-scale Wet Removal
 !  ----------------------------
    KIN = .TRUE.
-   do n = 1, self%nbins
-      fwet = 0.8
-      call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+   select case (self%wetdep_opt)
+    case(1)
+        fwet = self%fwet(self%nbins) ! Assume fwet is the last bin 
+        do n = 1, self%nbins
+            call WetRemovalGOCART2G(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
                               KIN, MAPL_GRAV, fwet, DU(:,:,:,n), ple, t, airdens, &
                               pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, DUWT, __RC__)
-   end do
+        enddo
+    case(2) ! New Wet Removal option 
+        do n = 1, self%nbins
+            call NewWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'dust', &
+                              .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), DU(:,:,:,n), ple, t, airdens, &
+                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, DUWT, __RC__)
+        enddo
+   end select 
 
 !  Compute diagnostics
 !  -------------------
