@@ -1066,15 +1066,16 @@ contains
         enddo
      case(2)
         do n = 1, self%nbins
-            call MAPL_VarSpecGet(InternalSpec(n), SHORT_NAME=short_name, __RC__)
-            call MAPL_GetPointer(internal, NAME=short_name, ptr=int_ptr, __RC__)
+            write(*,*) 'WetDepOpt=2 IN THE CALL TO WETREMOVAL'
             if (n == 1) then 
+                write(*,*) 'WetDepOpt=2 BIN =  1'
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .true., KIN, MAPL_GRAV, self%fwet, self%radius, int_ptr, ple, t, airdens, &
+                             .true., KIN, MAPL_GRAV, self%fwet, self%radius, intPtr_phobic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             else 
+                write(*,*) 'WetDepOpt=2 BIN =  2'
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .false., KIN, MAPL_GRAV, self%fwet, self%radius, int_ptr, ple, t, airdens, &
+                             .false., KIN, MAPL_GRAV, self%fwet, self%radius, intPtr_philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             end if 
         end do
