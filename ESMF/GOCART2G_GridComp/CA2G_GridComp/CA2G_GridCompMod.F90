@@ -1061,18 +1061,20 @@ contains
         fwet = self%fwet(self%nbins) ! Assume fwet is the last bin 
         do n = 1, self%nbins 
             call WetRemovalGOCART2G (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             KIN, MAPL_GRAV, self%fwet(n), philic, ple, t, airdens, &
+                             KIN, MAPL_GRAV, fwet, philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, WT, __RC__)
         enddo
      case(2)
         do n = 1, self%nbins
+            fwet = self%fwet(n)
+
             if (n == 1) then 
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .true., KIN, MAPL_GRAV, self%fwet, self%radius, intPtr_phobic, ple, t, airdens, &
+                             .true., KIN, MAPL_GRAV, fwet, self%radius(n), intPtr_phobic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             else 
                 call NewWetRemoval (self%km, self%klid, self%nbins, self%nbins, n, self%cdt, GCsuffix, &
-                             .false., KIN, MAPL_GRAV, self%fwet, self%radius, intPtr_philic, ple, t, airdens, &
+                             .false., KIN, MAPL_GRAV, fwet, self%radius(n),  intPtr_philic, ple, t, airdens, &
                              pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, WT, __RC__)
             end if 
         end do
