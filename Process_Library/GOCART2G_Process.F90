@@ -3008,7 +3008,7 @@ CONTAINS
    nbins = n2-n1+1
 
    allocate(fd(km,nbins),source=0.0,stat=ios)
-   allocate(dc(km,nbins),source=0.0,stat=ios)
+   allocate(dc(nbins),source=0.0,stat=ios)
 
    if( associated(fluxout) ) fluxout(i1:i2,j1:j2,bin_ind) = 0.0
 
