@@ -3145,7 +3145,7 @@ CONTAINS
             do n = 1, nbins
                DC(n) = aerosol(i,j,k) * F * (1.-exp(-BT)) ! Wet deposition loss 
                DC(n) = MAX(DC(n), 0.d0)
-               aerosol(i,j,k) = aerosol(i,j,k) - DC(n) ! Apply to concentration 
+               aerosol(i,j,k) = max(aerosol(i,j,k) - DC(n), 1.0E-32) ! Apply to concentration 
                Fd(k,n) = DC(n)*pdog(i,j,k) ! Flux down [kg m-2]
             enddo
 
@@ -3192,7 +3192,7 @@ CONTAINS
                do n = 1, nbins
                   DC(n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
                   DC(n) = MAX(DC(n), 0d0)
-                  aerosol(i,j,k) = aerosol(i,j,k) - DC(n) ! Apply to concentration
+                  aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32) ! Apply to concentration
                enddo
 
                fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(n) * pdog(i,j,k) / cdt
@@ -3204,9 +3204,9 @@ CONTAINS
                   ! Adjust WASHFRAC by the total precipation 
                   WASHFRAC = WASHFRAC / F * F_WASH
                   ! WASHOUT Wet Deposition
-                  DC(n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+                  DC(n) = MAX(aerosol(i,j,k) * WASHFRAC, 0.d0)  ! WASHOUT Wet Deposition
                   ! Apply to concentration
-                  aerosol(i,j,k) = MAX(aerosol(i,j,k) + DC(n), 1.e-32)
+                  aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
                enddo
                
             endif
@@ -3234,7 +3234,7 @@ CONTAINS
                   ! Adjust tracer in the level 
                   do n = 1, nbins
                      DC(n) = Fd(k-1,n) / pdog(i,j,k) * A
-                     aerosol(i,j,k) = MAX(aerosol(i,j,k) + DC(n), 1.e-32)
+                     aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
                      Fd(k,n) = Fd(k,n) - DC(n) * pdog(i,j,k)
                   enddo 
                endif
@@ -3287,9 +3287,9 @@ CONTAINS
                ! Adjust WASHFRAC by the total precipation 
                WASHFRAC = WASHFRAC / F * F_WASH
                ! WASHOUT Wet Deposition
-               DC(n) = aerosol(i,j,k) * WASHFRAC
+               DC(n) = max(aerosol(i,j,k) * WASHFRAC, 0.d0)
                ! Apply to concentration
-               aerosol(i,j,k) = MAX(aerosol(i,j,k) + DC(n), 1.e-32)
+               aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
             enddo
 
             fluxout(i,j,bin_ind) = fluxout(i,j,bin_ind) + DC(n) * pdog(i,j,k) / cdt
