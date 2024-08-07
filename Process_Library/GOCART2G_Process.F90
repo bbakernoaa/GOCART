@@ -2912,8 +2912,8 @@ CONTAINS
    logical, intent(in) :: phobic         ! phobic flag 
    logical, intent(in) :: KIN            ! true for aerosol
    real, intent(in)    :: grav           ! gravity [m/sec^2]
-   real, allocatable, dimension(:)           :: radius         ! radius [m]
-   real, allocatable, dimension(:)           :: fwet           ! wet scavenging coefficient [-]
+   real,               :: radius         ! radius [m]
+   real,               :: fwet           ! wet scavenging coefficient [-]
    real, dimension(:,:,:), intent(inout) :: aerosol        ! internal state aerosol [kg/kg]
    real, pointer, dimension(:,:,:), intent(in)  :: ple     ! pressure level thickness [Pa]
    real, pointer, dimension(:,:,:), intent(in)  :: tmpu    ! temperature [K]
@@ -3095,7 +3095,7 @@ CONTAINS
 
          do n = 1, nbins
             ! Effective Wet Removal
-            effRemoval = fwet(n)
+            effRemoval = fwet
             ! WETLOSS due to rainout 
             DC(n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT))
             if ( DC(n) .lt. 0.) DC(n) = 0.
@@ -3143,7 +3143,8 @@ CONTAINS
             BT = B * Td_ls
 
             do n = 1, nbins
-               DC(n) = aerosol(i,j,k) * F * (1.-exp(-BT)) ! Wet deposition loss 
+               effRemoval = fwet
+               DC(n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT)) ! Wet deposition loss 
                if ( DC(n) .lt. 0.) DC(n) = 0.
                aerosol(i,j,k) = max(aerosol(i,j,k) - DC(n), 1.0E-32) ! Apply to concentration 
                Fd(k,n) = DC(n)*pdog(i,j,k) ! Flux down [kg m-2]
@@ -3200,7 +3201,7 @@ CONTAINS
             else ! Aerosol
 
                do n = 1, nbins
-                  WASHFRAC = WASHFRAC_AERO(washout_opt, radius(n), tmpu(i,j,k), QDOWN, F, cdt, phobic)
+                  WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
                   ! Adjust WASHFRAC by the total precipation 
                   WASHFRAC = WASHFRAC / F * F_WASH
                   ! WASHOUT Wet Deposition
@@ -3285,7 +3286,7 @@ CONTAINS
             
          else
             do n = 1, nbins
-               WASHFRAC = WASHFRAC_AERO(washout_opt, radius(n), tmpu(i,j,k), QDOWN, F, cdt, phobic)
+               WASHFRAC = WASHFRAC_AERO(washout_opt, radius, tmpu(i,j,k), QDOWN, F, cdt, phobic)
                ! Adjust WASHFRAC by the total precipation 
                WASHFRAC = WASHFRAC / F * F_WASH
                ! WASHOUT Wet Deposition

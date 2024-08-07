@@ -838,7 +838,7 @@ contains
     case(2)
         do n = 1, self%nbins
             call NewWetRemoval(self%km, self%klid, self%nbins, self%nbins, n, self%cdt, 'sea_salt', &
-                            .false., KIN, MAPL_GRAV, self%fwet, self%radius, SS(:,:,:,n), ple, t, airdens, &
+                            .false., KIN, MAPL_GRAV, self%fwet(n), self%radius(n), SS(:,:,:,n), ple, t, airdens, &
                             pfl_lsan, pfi_lsan, cn_prcp, ncn_prcp, self%washout_opt, SSWT, __RC__)
         enddo
     end select
