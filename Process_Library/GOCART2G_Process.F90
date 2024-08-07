@@ -3081,9 +3081,9 @@ CONTAINS
      k = LH 
      if ( qls(k) > tiny(0.) ) then 
          ! Call the LS Rain function
-         k_rain = k_ls_rain( C1_min_ls, qls(k), 1e-6 )
+         k_rain = k_ls_rain( C1_min_ls, qls(k), L_ls )
          ! Fraction of LS rain in gridbox 
-         F_RAIN = F_LS_RAIN( F0_ls, qls(k), cdt, 1e-6, C1_min_ls)
+         F_RAIN = F_LS_RAIN( F0_ls, qls(k), cdt, L_ls, C1_min_ls)
 
          if (kin) then     ! Aerosols
             B = k_rain
@@ -3098,7 +3098,7 @@ CONTAINS
             effRemoval = fwet(n)
             ! WETLOSS due to rainout 
             DC(n) = aerosol(i,j,k) * F * effRemoval * (1.-exp(-BT))
-            DC(n) = MAX(DC(n), 0.d0)
+            if ( DC(n) .lt. 0.) DC(n) = 0.
             ! Apply to aerosol concentrations
             aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.0E-32)
             ! Flux down [kg m-2]
@@ -3117,10 +3117,10 @@ CONTAINS
          if ( qls(k) .lt. tiny(0.) ) cycle
 
          ! Call the LS Rain function
-         k_rain = k_ls_rain( C1_min_ls, qls(k), 1e-6 )
+         k_rain = k_ls_rain( C1_min_ls, qls(k), L_ls )
 
          ! Fraction of LS rain in gridbox 
-         F = F_LS_RAIN( F0_ls, qls(k), cdt, 1e-6, C1_min_ls)
+         F = F_LS_RAIN( F0_ls, qls(k), cdt, L_ls, C1_min_ls)
 
          if ( PDOWN(i,j,k) > 0. ) then
             F_RAIN = F 
@@ -3144,7 +3144,7 @@ CONTAINS
 
             do n = 1, nbins
                DC(n) = aerosol(i,j,k) * F * (1.-exp(-BT)) ! Wet deposition loss 
-               DC(n) = MAX(DC(n), 0.d0)
+               if ( DC(n) .lt. 0.) DC(n) = 0.
                aerosol(i,j,k) = max(aerosol(i,j,k) - DC(n), 1.0E-32) ! Apply to concentration 
                Fd(k,n) = DC(n)*pdog(i,j,k) ! Flux down [kg m-2]
             enddo
@@ -3191,7 +3191,7 @@ CONTAINS
                ! Apply washout
                do n = 1, nbins
                   DC(n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
-                  DC(n) = MAX(DC(n), 0d0)
+                  if ( DC(n) .lt. 0.) DC(n) = 0.
                   aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32) ! Apply to concentration
                enddo
 
@@ -3204,7 +3204,8 @@ CONTAINS
                   ! Adjust WASHFRAC by the total precipation 
                   WASHFRAC = WASHFRAC / F * F_WASH
                   ! WASHOUT Wet Deposition
-                  DC(n) = MAX(aerosol(i,j,k) * WASHFRAC, 0.d0)  ! WASHOUT Wet Deposition
+                  DC(n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+                  if ( DC(n) .lt. 0.) DC(n) = 0.
                   ! Apply to concentration
                   aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
                enddo
@@ -3234,7 +3235,7 @@ CONTAINS
                   ! Adjust tracer in the level 
                   do n = 1, nbins
                      DC(n) = Fd(k-1,n) / pdog(i,j,k) * A
-                     aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
+                     aerosol(i,j,k) = MAX(aerosol(i,j,k) + DC(n), 1.e-32)
                      Fd(k,n) = Fd(k,n) - DC(n) * pdog(i,j,k)
                   enddo 
                endif
@@ -3276,6 +3277,7 @@ CONTAINS
             ! Apply washout
             do n = 1, nbins
                DC(n) = aerosol(i,j,k) * WASHFRAC  ! WASHOUT Wet Deposition
+               if ( DC(n) .lt. 0.) DC(n) = 0.
                aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32) ! aerosol(i,j,k) - DC(n) ! Apply to concentration
             enddo
 
@@ -3287,7 +3289,8 @@ CONTAINS
                ! Adjust WASHFRAC by the total precipation 
                WASHFRAC = WASHFRAC / F * F_WASH
                ! WASHOUT Wet Deposition
-               DC(n) = max(aerosol(i,j,k) * WASHFRAC, 0.d0)
+               DC(n) = aerosol(i,j,k) * WASHFRAC
+               if ( DC(n) .lt. 0.) DC(n) = 0.
                ! Apply to concentration
                aerosol(i,j,k) = MAX(aerosol(i,j,k) - DC(n), 1.e-32)
             enddo
