@@ -58,7 +58,7 @@ module DU2G_GridCompMod
        real, allocatable      :: sdist(:)       ! FENGSHA aerosol fractional size distribution [1]
        real                   :: alpha          ! FENGSHA scaling factor
        real                   :: gamma          ! FENGSHA tuning exponent
-       real                   :: drag_opt       ! FENGSHA drag option 1 - input only, 2 - Darmenova, 3 - Leung
+       integer                :: drag_opt       ! FENGSHA drag option 1 - input only, 2 - Darmenova, 3 - Leung
        real                   :: kvhmax         ! FENGSHA max. vertical/horizontal mass flux ratio [1]
        real                   :: f_sdl          ! FENGSHA drylimit tuning factor
        real                   :: Ch_DU_res(NHRES) ! resolutions used for Ch_DU
@@ -191,7 +191,7 @@ contains
        call ESMF_ConfigGetAttribute (cfg, self%f_swc,      label='soil_moisture_factor:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%f_sdl,      label='soil_drylimit_factor:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%kvhmax,     label='vertical_to_horizontal_flux_ratio_limit:', __RC__)
-       call ESMF_ConfigGetAttribute (cfg, self%drag_opt,   label='drag_parition_option:', __RC__)
+       call ESMF_ConfigGetAttribute (cfg, self%drag_opt,   label='drag_partition_option:', __RC__)
     case ('k14')
        call ESMF_ConfigGetAttribute (cfg, self%clayFlag,   label='clayFlag:', __RC__)
        call ESMF_ConfigGetAttribute (cfg, self%f_swc,      label='soil_moisture_factor:', __RC__)
