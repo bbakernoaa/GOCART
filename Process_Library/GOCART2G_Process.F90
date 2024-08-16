@@ -473,6 +473,7 @@ CONTAINS
    real                  :: total_emissions
    real                  :: u_sum, u_thresh
    real                  :: smois
+   real                  :: R
 
 ! !CONSTANTS:
    real, parameter       :: ssm_thresh = 1.e-02    ! emit above this erodibility threshold [1]
