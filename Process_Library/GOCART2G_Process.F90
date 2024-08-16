@@ -357,7 +357,7 @@ CONTAINS
 ! !REVISION HISTORY:
 !
 ! 15Aug2024 B.Baker/NOAA    - Original implementation
-   real function LeungDragPartition(Lc, lai) drag_partition
+   real function LeungDragPartition(Lc, lai)
 ! !USES:
    implicit NONE
 
@@ -371,7 +371,8 @@ CONTAINS
    real            :: K               ! normalized gap length 
    real            :: feff_veg        ! effective drag partition due to vegetation
    real            :: feff_bare       ! effective drag partition due to bare surfaces 
-   real            :: drag_partition  ! total effective drag partition
+   real            :: Rbare1
+   real            :: Rbare2
 
 ! !CONSTANTS:
    real, parameter :: LAI_THR = 1.
@@ -398,7 +399,7 @@ CONTAINS
 
    feff_bare = Rbare1 * Rbare2
 
-   drag_partition = frac_veg * feff_veg + frac_bare * feff_bare
+   LeungDragPartition = frac_veg * feff_veg + frac_bare * feff_bare
 
    end function LeungDragPartition
 
