@@ -316,7 +316,9 @@ CONTAINS
    real            :: Rveg2
    real            :: Rbare1
    real            :: Rbare2
-
+   real            :: feff_bare
+   real            :: feff_veg
+   real            :: feff
 ! !DESCRIPTION: Computes the drag parition according to Darmenova et al. 2009
 !               Darmenova, K., Sokolik, I. N., Shao, Y., Marticorena, B., and
 !               Bergametti, G.: Development of a physically based dust
@@ -328,23 +330,38 @@ CONTAINS
 ! 27Jun2024 B.Baker/NOAA    - Original implementation
 !
 !EOP   
-   
-
-   if (vegfrac < 0.4) then ! Avoid divisin by zero 
+   if ((vegfrac <=.8) .and. (Lc < 1.0)) then ! Avoid divisin by zero 
       ! Vegetative piece
       Lc_veg = -0.35 * LOG(1. - vegfrac)
-      Rveg1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigv * mv * Lc_veg) )
-      Rveg2 = 1.0 / MAX( 1.0e-5, sqrt(1 + sigv * mv * Lc_veg) ) 
-
+      Rveg1 = 1.0 / sqrt(1 - sigv * mv * Lc_veg)
+      Rveg2 = 1.0 / sqrt(1 + mv * Betav * Lc_veg) 
+      feff_veg = Rveg1 * Rveg2
+      if ((feff_veg < 1.e-2) .or. (feff_veg > 1)) then
+         feff_veg = 1.0e-5
+      endif
+      
       ! Bare surface piece
-      Lc_bare = MIN(2.8, Lc / (1 - vegfrac)) ! avoid any numberical issues at high Lc 
-      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigb * mb * Lc_bare) )
-      Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + sigb * mb * Lc_bare ) )
+      Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
+      Rbare1 = 1.0 / sqrt(1 - sigb * mb * Lc_bare) 
+      Rbare2 = 1.0 / sqrt(1 +  mb*Betab * Lc_bare ) 
 
-      DarmenovaDragPartition = Rveg1 * Rveg2 * Rbare1 * Rbare2
+      feff_bare = Rbare1 * Rbare2
+      if ((feff_bare < 1.e-2) .or. (feff_bare > 1)) then
+         feff_bare = 1.0e-5
+      endif
+      feff = feff_veg * feff_bare
    else
-      DarmenovaDragPartition = 1.0e-5
+      feff = 1.0e-5
    endif
+
+   if (feff > 1.) then
+      DarmenovaDragPartition = 1.e-5
+   else if (feff <1e-5) then
+      DarmenovaDragPartition = 1.e-5
+   else
+      DarmenovaDragPartition = feff
+   endif
+
    
    end function DarmenovaDragPartition
 
@@ -357,22 +374,24 @@ CONTAINS
 ! !REVISION HISTORY:
 !
 ! 15Aug2024 B.Baker/NOAA    - Original implementation
-   real function LeungDragPartition(Lc, lai)
+   real function LeungDragPartition(Lc, lai, gvf)
 ! !USES:
    implicit NONE
 
 ! !INPUT PARAMETERS:
    real, intent(in) :: Lc
    real, intent(in) :: lai
-
+   real, intent(in) :: gvf
 ! LOCAL VARIABLES:
    real            :: frac_bare       ! Fraction of bare surface
    real            :: frac_veg        ! fraction of vegetative surface
    real            :: K               ! normalized gap length 
-   real            :: feff_veg        ! effective drag partition due to vegetation
-   real            :: feff_bare       ! effective drag partition due to bare surfaces 
+   real            :: feff_bare       ! effective drag partition due to bare surfaces
+   real            :: feff_veg
    real            :: Rbare1
    real            :: Rbare2
+   real            :: Lc_bare
+   real            :: feff
 
 ! !CONSTANTS:
    real, parameter :: LAI_THR = 1.
@@ -382,25 +401,38 @@ CONTAINS
    real, parameter :: mB = 0.5
    real, parameter :: Betab = 90.0
 
-   if (LAI <1. ) then
-      frac_bare = 1. - LAI / LAI_THR
-   else
-      frac_bare = 0.
+   frac_bare  = 1. - gvf
+
+   if (LAI <= 0) then
+      feff_veg = 0.
+   else if (LAI >= 1) then
+      K = 2. * ( LAI_THR / LAI - 1)
+      feff_veg = ( K + f0 * c) / (K + c)
    endif
+   
+   if ((Lc < 1.) .and. frac_bare <= 1) then
+      Lc_bare = Lc / frac_bare
+      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigB * mB* Lc_bare) )
+      Rbare2 = 1.0	/  sqrt(1 + BetaB * mB * Lc_bare ) 
+      feff_bare = Rbare1 * Rbare2
+      if (feff_bare > 1) then
+         feff_bare = 1.0e-5 ! Ensure realistic values
+      endif
+   else
+      feff_bare = 1.0e-5
+   endif
+   
 
-   frac_veg = 1. - frac_bare
+   feff = gvf * feff_veg + frac_bare * feff_bare
 
-   K = 2. * ( LAI_THR / LAI - 1)
-
-   feff_veg = ( K + f0 * c) / (K + c)
-
-   Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigB * mB* Lc) )
-   Rbare2 = 1.0	/ MAX( 1.0e-5, sqrt(1 + BetaB * mB * Lc ) )
-
-   feff_bare = Rbare1 * Rbare2
-
-   LeungDragPartition = frac_veg * feff_veg + frac_bare * feff_bare
-
+   if (feff > 1.) then
+      LeungDragPartition = 1.e-5
+   else if (feff <1e-5) then
+      LeungDragPartition = 1.e-5
+   else
+      LeungDragPartition = feff
+   endif
+   
    end function LeungDragPartition
 
 
@@ -510,9 +542,9 @@ CONTAINS
        ! threshold and sanity check for surface input
        ! --------------------------------------------
        if (drag_opt == 2 ) then ! Darmenova et al, 2009
-         if (.not.skip) skip = (vegfrac(i,j) < 0.)
+         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (vegfrac(i,j) >= 1)
        else if (drag_opt == 3 ) then ! Leung et al, 2023
-         if (.not.skip) skip = (lai(i,j) >= 1.)
+         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (lai(i,j) >= 1.)
        end if
 
        if (.not.skip) skip = (ssm(i,j) < ssm_thresh) &
@@ -539,7 +571,7 @@ CONTAINS
          else if (drag_opt == 2) then
             R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j))
          else if (drag_opt == 3) then
-            R = LeungDragPartition(rdrag(i,j), lai(i,j))
+            R = LeungDragPartition(rdrag(i,j), lai(i,j), vegfrac(i,j))
          end if
          
          rustar = R * ustar(i,j)
