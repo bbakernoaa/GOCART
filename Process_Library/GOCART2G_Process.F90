@@ -411,10 +411,8 @@ CONTAINS
    
    ! Bare surface piece
    frac_bare = 1. - gvf
-   if ((Lc < 1.) .and. (frac_bare <= 1)) then
+   if ((Lc < 1.) .and. (gvf < 0.8)) then
       Lc_bare = Lc / (1. - gvf)
-      
-      Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
       Rbare1 = 1.0 / sqrt(1 - sigb * mb * Lc_bare) 
       Rbare2 = 1.0 / sqrt(1 +  mb*Betab * Lc_bare ) 
 
