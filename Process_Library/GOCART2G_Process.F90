@@ -401,22 +401,26 @@ CONTAINS
    real, parameter :: mB = 0.5
    real, parameter :: Betab = 90.0
 
-   frac_bare  = 1. - gvf
-
-   if (LAI <= 0) then
+   ! Vegetative surface piece
+   if ((LAI <= 0) .or. (LAI > 1.0)) then
       feff_veg = 0.
-   else if (LAI >= 1) then
-      K = 2. * ( LAI_THR / LAI - 1)
+   else if (LAI < 1) then
+      K = 2. * ( LAI_THR / LAI - 1.)
       feff_veg = ( K + f0 * c) / (K + c)
    endif
    
-   if ((Lc < 1.) .and. frac_bare <= 1) then
-      Lc_bare = Lc / frac_bare
-      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigB * mB* Lc_bare) )
-      Rbare2 = 1.0	/  sqrt(1 + BetaB * mB * Lc_bare ) 
+   ! Bare surface piece
+   frac_bare = 1. - gvf
+   if ((Lc < 1.) .and. (frac_bare <= 1)) then
+      Lc_bare = Lc / (1. - gvf)
+      
+      Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
+      Rbare1 = 1.0 / sqrt(1 - sigb * mb * Lc_bare) 
+      Rbare2 = 1.0 / sqrt(1 +  mb*Betab * Lc_bare ) 
+
       feff_bare = Rbare1 * Rbare2
-      if (feff_bare > 1) then
-         feff_bare = 1.0e-5 ! Ensure realistic values
+      if ((feff_bare < 1.e-2) .or. (feff_bare > 1)) then
+         feff_bare = 1.0e-5
       endif
    else
       feff_bare = 1.0e-5
@@ -542,7 +546,7 @@ CONTAINS
        ! threshold and sanity check for surface input
        ! --------------------------------------------
        if (drag_opt == 2 ) then ! Darmenova et al, 2009
-         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (vegfrac(i,j) >= 1)
+         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (vegfrac(i,j) >= 1.)
        else if (drag_opt == 3 ) then ! Leung et al, 2023
          if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (lai(i,j) >= 1.)
        end if
