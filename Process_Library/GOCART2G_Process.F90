@@ -394,36 +394,38 @@ CONTAINS
    real            :: feff
 
 ! !CONSTANTS:
-   real, parameter :: LAI_THR = 1.
+   real, parameter :: LAI_THR = 0.4
    real, parameter :: c = 4.8
    real, parameter :: f0 = 0.32
    real, parameter :: sigb = 1.0
    real, parameter :: mB = 0.5
    real, parameter :: Betab = 90.0
 
-   frac_bare  = 1. - gvf
+   feff_bare = 0.
+   feff_veg = 0.
+   
+   frac_bare  = MAX(1. - LAI / LAI_THR, 0.)
 
-   if (LAI <= 0) then
+   if ((LAI <= 0) .or. (LAI >= LAI_THR)) then
       feff_veg = 0.
-   else if (LAI >= 1) then
-      K = 2. * ( LAI_THR / LAI - 1)
+   else if (LAI < LAI_THR) then
+      K = 2. * ( 1 / frac_bare - 1)
       feff_veg = ( K + f0 * c) / (K + c)
    endif
    
-   if ((Lc < 1.) .and. frac_bare <= 1) then
-      Lc_bare = Lc / frac_bare
-      Rbare1 = 1.0 / MAX( 1.0e-5, sqrt(1 - sigB * mB* Lc_bare) )
-      Rbare2 = 1.0	/  sqrt(1 + BetaB * mB * Lc_bare ) 
+   if ((Lc < 1.) .and. (LAI <= LAI_THR)) then
+      Lc_bare = Lc / ( 1 - MIN(gvf,0.999))
+      Rbare1 = 1.0 / sqrt(1 - sigB * mB* Lc_bare) 
+      Rbare2 = 1.0 / sqrt(1 + BetaB * mB * Lc_bare ) 
       feff_bare = Rbare1 * Rbare2
       if (feff_bare > 1) then
-         feff_bare = 1.0e-5 ! Ensure realistic values
+         feff_bare = 0. ! Ensure realistic values
       endif
    else
-      feff_bare = 1.0e-5
+      feff_bare = 0.
    endif
    
-
-   feff = gvf * feff_veg + frac_bare * feff_bare
+   feff = (gvf * feff_veg**3 + frac_bare * feff_bare**3) ** (1./3.)
 
    if (feff > 1.) then
       LeungDragPartition = 1.e-5
