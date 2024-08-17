@@ -423,7 +423,6 @@ CONTAINS
    else
       feff_bare = 1.0e-5
    endif
-   
 
    feff = gvf * feff_veg + frac_bare * feff_bare
 
