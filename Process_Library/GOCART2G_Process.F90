@@ -389,7 +389,7 @@ CONTAINS
 ! !REVISION HISTORY:
 !
 ! 15Aug2024 B.Baker/NOAA    - Original implementation
-   real function LeungDragPartition(Lc, lai, thresh)
+   real function LeungDragPartition(Lc, lai, gvf, thresh)
 ! !USES:
    implicit NONE
 
@@ -422,7 +422,6 @@ CONTAINS
    feff_veg = 0.
    
    frac_bare  = MAX(1. - LAI / LAI_THR, 0.)
-   vegfrac = MAX(LAI / LAI_THR, 0.)
 
    if ((LAI <= 0) .or. (LAI >= LAI_THR)) then
       feff_veg = 0.
@@ -446,7 +445,7 @@ CONTAINS
       feff_bare = 0.
    endif
    
-   feff = (vegfrac * feff_veg**3 + frac_bare * feff_bare**3) ** (1./3.)
+   feff = (gvf * feff_veg**3 + frac_bare * feff_bare**3) ** (1./3.)
 
    if (feff > 1.) then
       LeungDragPartition = 1.e-5
@@ -594,7 +593,7 @@ CONTAINS
          else if (drag_opt == 2) then
             R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j), 0.33)
          else if (drag_opt == 3) then
-            R = LeungDragPartition(rdrag(i,j), lai(i,j), 0.33)
+            R = LeungDragPartition(rdrag(i,j), lai(i,j), vegfrac(i,j), 0.33)
          end if
          
          rustar = R * ustar(i,j)
