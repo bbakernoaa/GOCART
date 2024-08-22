@@ -427,7 +427,7 @@ CONTAINS
    if ((LAI <= 0) .or. (LAI >= LAI_THR)) then
       feff_veg = 0.
    else if (LAI < LAI_THR) then
-      K = 2. * ( 1 / frac_bare - 1)
+      K = 2. * ( 1 / (1 - gvf) - 1)
       feff_veg = ( K + f0 * c) / (K + c)
    endif
    
