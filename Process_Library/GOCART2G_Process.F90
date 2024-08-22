@@ -336,11 +336,11 @@ CONTAINS
 !EOP   
    skip = .false.
 
-   gvf = vegfrac / thresh 
+   gvf = vegfrac 
 
    ! vegetation effect
    if (.not.skip) skip = (gvf < 0.0)
-   if (.not.skip) skip = (gvf >= 1)
+   if (.not.skip) skip = (gvf >= thresh)
    if (.not.skip) then
       Lc_veg = -0.35 * LOG(1. - gvf)
       Rveg1 = 1.0 / sqrt(1 - sigv * mv * Lc_veg)
@@ -357,7 +357,7 @@ CONTAINS
    tmpVal = 1 - sigb * mb * Lc_bare
    skip=.false.
    if (.not.skip) skip = (gvf < 0.0)
-   if (.not.skip) skip = (gvf >= 1.0)
+   if (.not.skip) skip = (gvf >= thresh)
    if (.not.skip) skip = (Lc > 0.2)
    if (.not.skip) skip = (tmpVal <= 0.0)
    if (.not.skip) then 
