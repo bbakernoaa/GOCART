@@ -294,13 +294,14 @@ CONTAINS
 ! !IROUTINE: DarmenovaDragPartition - Calculates the double drag parition from Darmenova 2009
 !
 ! !INTERFACE:
-   real function DarmenovaDragPartition(Lc, vegfrac)
+   real function DarmenovaDragPartition(Lc, vegfrac, thresh)
 ! !USES:
    implicit NONE
 
 ! !INPUT PARAMETERS:
    real, intent(in) :: Lc
    real, intent(in) :: vegfrac
+   real, intent(in) :: thresh
 
 ! !CONSTANTS:
    real, parameter :: sigb = 1.0
@@ -319,6 +320,7 @@ CONTAINS
    real            :: feff_bare
    real            :: feff_veg
    real            :: feff
+   real            :: gvf
    real            :: tmpVal
    logical         :: skip 
 ! !DESCRIPTION: Computes the drag parition according to Darmenova et al. 2009
@@ -334,11 +336,13 @@ CONTAINS
 !EOP   
    skip = .false.
 
+   gvf = vegfrac / thresh 
+
    ! vegetation effect
-   if (.not.skip) skip = (vegfrac < 0.0)
-   if (.not.skip) skip = (vegfrac > 0.33)
+   if (.not.skip) skip = (gvf < 0.0)
+   if (.not.skip) skip = (gvf >= 1)
    if (.not.skip) then
-      Lc_veg = -0.35 * LOG(1. - vegfrac)
+      Lc_veg = -0.35 * LOG(1. - gvf)
       Rveg1 = 1.0 / sqrt(1 - sigv * mv * Lc_veg)
       Rveg2 = 1.0 / sqrt(1 + mv * Betav * Lc_veg)
       feff_veg = Rveg1 * Rveg2
@@ -348,11 +352,12 @@ CONTAINS
 
 
    ! bare surface effect 
-   Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
+
+   Lc_bare = Lc / (1 - gvf) ! avoid any numberical issues at high Lc 
    tmpVal = 1 - sigb * mb * Lc_bare
    skip=.false.
-   if (.not.skip) skip = (vegfrac < 0.0)
-   if (.not.skip) skip = (vegfrac > 0.33)
+   if (.not.skip) skip = (gvf < 0.0)
+   if (.not.skip) skip = (gvf >= 1.0)
    if (.not.skip) skip = (Lc > 0.2)
    if (.not.skip) skip = (tmpVal <= 0.0)
    if (.not.skip) then 
@@ -384,14 +389,14 @@ CONTAINS
 ! !REVISION HISTORY:
 !
 ! 15Aug2024 B.Baker/NOAA    - Original implementation
-   real function LeungDragPartition(Lc, lai, gvf)
+   real function LeungDragPartition(Lc, lai, thresh)
 ! !USES:
    implicit NONE
 
 ! !INPUT PARAMETERS:
    real, intent(in) :: Lc
    real, intent(in) :: lai
-   real, intent(in) :: gvf
+   real, intent(in) :: thresh
 ! LOCAL VARIABLES:
    real            :: frac_bare       ! Fraction of bare surface
    real            :: frac_veg        ! fraction of vegetative surface
@@ -403,6 +408,7 @@ CONTAINS
    real            :: Lc_bare
    real            :: feff
    real            :: tmpVal
+   real            :: vegfrac 
 
 ! !CONSTANTS:
    real, parameter :: LAI_THR = 0.33
@@ -416,6 +422,7 @@ CONTAINS
    feff_veg = 0.
    
    frac_bare  = MAX(1. - LAI / LAI_THR, 0.)
+   vegfrac = MAX(LAI / LAI_THR, 0.)
 
    if ((LAI <= 0) .or. (LAI >= LAI_THR)) then
       feff_veg = 0.
@@ -432,11 +439,7 @@ CONTAINS
          Rbare2 = 1.0 / sqrt(1 + BetaB * mB * Lc_bare ) 
          feff_bare = Rbare1 * Rbare2
       else 
-         feff_bare = 1.0
-      endif
-      
-      if (feff_bare > 1) then
-            feff_bare = 0. ! Ensure realistic values
+         feff_bare = 0.
       endif
    
    else
@@ -562,9 +565,9 @@ CONTAINS
        ! threshold and sanity check for surface input
        ! --------------------------------------------
        if (drag_opt == 2 ) then ! Darmenova et al, 2009
-         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (vegfrac(i,j) >= 1)
+         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (vegfrac(i,j) >= 0.33)
        else if (drag_opt == 3 ) then ! Leung et al, 2023
-         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (lai(i,j) >= 1.)
+         if (.not.skip) skip = (vegfrac(i,j) < 0.) .or. (lai(i,j) >= 0.33)
        end if
 
        if (.not.skip) skip = (ssm(i,j) < ssm_thresh) &
@@ -589,9 +592,9 @@ CONTAINS
          if (drag_opt == 1) then
             R = rdrag(i,j)
          else if (drag_opt == 2) then
-            R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j))
+            R = DarmenovaDragPartition(rdrag(i,j), vegfrac(i,j), 0.33)
          else if (drag_opt == 3) then
-            R = LeungDragPartition(rdrag(i,j), lai(i,j), vegfrac(i,j))
+            R = LeungDragPartition(rdrag(i,j), lai(i,j), 0.33)
          end if
          
          rustar = R * ustar(i,j)
