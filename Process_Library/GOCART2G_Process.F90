@@ -336,7 +336,7 @@ CONTAINS
 
    ! vegetation effect
    if (.not.skip) skip = (vegfrac < 0.0)
-   if (.not.skip) skip = (vegfac > 0.33)
+   if (.not.skip) skip = (vegfrac > 0.33)
    if (.not.skip) then
       Lc_veg = -0.35 * LOG(1. - vegfrac)
       Rveg1 = 1.0 / sqrt(1 - sigv * mv * Lc_veg)
