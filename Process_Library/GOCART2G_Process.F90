@@ -446,7 +446,7 @@ CONTAINS
       feff_bare = 0.
    endif
    
-   feff = (gvf * feff_veg**3 + frac_bare * feff_bare**3) ** (1./3.)
+   feff = (vegfrac * feff_veg**3 + frac_bare * feff_bare**3) ** (1./3.)
 
    if (feff > 1.) then
       LeungDragPartition = 1.e-5
