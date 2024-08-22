@@ -319,6 +319,8 @@ CONTAINS
    real            :: feff_bare
    real            :: feff_veg
    real            :: feff
+   real            :: tmpVal
+   logical         :: skip 
 ! !DESCRIPTION: Computes the drag parition according to Darmenova et al. 2009
 !               Darmenova, K., Sokolik, I. N., Shao, Y., Marticorena, B., and
 !               Bergametti, G.: Development of a physically based dust
@@ -330,29 +332,38 @@ CONTAINS
 ! 27Jun2024 B.Baker/NOAA    - Original implementation
 !
 !EOP   
-   if ((vegfrac <=.8) .and. (Lc < 1.0)) then ! Avoid divisin by zero 
-      ! Vegetative piece
+   skip = .false.
+
+   ! vegetation effect
+   if (.not.skip) skip = (vegfrac < 0.0)
+   if (.not.skip) skip = (vegfac > 0.33)
+   if (.not.skip) then
       Lc_veg = -0.35 * LOG(1. - vegfrac)
       Rveg1 = 1.0 / sqrt(1 - sigv * mv * Lc_veg)
-      Rveg2 = 1.0 / sqrt(1 + mv * Betav * Lc_veg) 
+      Rveg2 = 1.0 / sqrt(1 + mv * Betav * Lc_veg)
       feff_veg = Rveg1 * Rveg2
-      if ((feff_veg < 1.e-2) .or. (feff_veg > 1)) then
-         feff_veg = 1.0e-5
-      endif
-      
-      ! Bare surface piece
-      Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
+   else 
+      feff_veg = 1e-5
+   endif
+
+
+   ! bare surface effect 
+   Lc_bare = Lc / (1 - vegfrac) ! avoid any numberical issues at high Lc 
+   tmpVal = 1 - sigb * mb * Lc_bare
+   skip=.false.
+   if (.not.skip) skip = (vegfrac < 0.0)
+   if (.not.skip) skip = (vegfac > 0.33)
+   if (.not.skip) skip = (Lc > 0.2)
+   if (.not.skip) skip = (tmpVal <= 0.0)
+   if (.not.skip) then 
       Rbare1 = 1.0 / sqrt(1 - sigb * mb * Lc_bare) 
       Rbare2 = 1.0 / sqrt(1 +  mb*Betab * Lc_bare ) 
-
       feff_bare = Rbare1 * Rbare2
-      if ((feff_bare < 1.e-2) .or. (feff_bare > 1)) then
-         feff_bare = 1.0e-5
-      endif
-      feff = feff_veg * feff_bare
    else
-      feff = 1.0e-5
+      feff_bare = 1.0e-5
    endif
+
+   feff = feff_veg * feff_bare
 
    if (feff > 1.) then
       DarmenovaDragPartition = 1.e-5
@@ -361,7 +372,6 @@ CONTAINS
    else
       DarmenovaDragPartition = feff
    endif
-
    
    end function DarmenovaDragPartition
 
@@ -392,9 +402,10 @@ CONTAINS
    real            :: Rbare2
    real            :: Lc_bare
    real            :: feff
+   real            :: tmpVal
 
 ! !CONSTANTS:
-   real, parameter :: LAI_THR = 0.4
+   real, parameter :: LAI_THR = 0.33
    real, parameter :: c = 4.8
    real, parameter :: f0 = 0.32
    real, parameter :: sigb = 1.0
@@ -413,14 +424,21 @@ CONTAINS
       feff_veg = ( K + f0 * c) / (K + c)
    endif
    
-   if ((Lc < 1.) .and. (LAI <= LAI_THR)) then
-      Lc_bare = Lc / ( 1 - MIN(gvf,0.999))
-      Rbare1 = 1.0 / sqrt(1 - sigB * mB* Lc_bare) 
-      Rbare2 = 1.0 / sqrt(1 + BetaB * mB * Lc_bare ) 
-      feff_bare = Rbare1 * Rbare2
-      if (feff_bare > 1) then
-         feff_bare = 0. ! Ensure realistic values
+   if (Lc <= 0.2) then 
+      Lc_bare = Lc / frac_bare
+      tmpVal = 1 - sigB * mB * Lc_bare
+      if (tmpVal > 0.0) then 
+         Rbare1 = 1.0 / sqrt(1 - sigB * mB* Lc_bare) 
+         Rbare2 = 1.0 / sqrt(1 + BetaB * mB * Lc_bare ) 
+         feff_bare = Rbare1 * Rbare2
+      else 
+         feff_bare = 1.0
       endif
+      
+      if (feff_bare > 1) then
+            feff_bare = 0. ! Ensure realistic values
+      endif
+   
    else
       feff_bare = 0.
    endif
