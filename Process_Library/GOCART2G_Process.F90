@@ -352,7 +352,7 @@ CONTAINS
    tmpVal = 1 - sigb * mb * Lc_bare
    skip=.false.
    if (.not.skip) skip = (vegfrac < 0.0)
-   if (.not.skip) skip = (vegfac > 0.33)
+   if (.not.skip) skip = (vegfrac > 0.33)
    if (.not.skip) skip = (Lc > 0.2)
    if (.not.skip) skip = (tmpVal <= 0.0)
    if (.not.skip) then 
