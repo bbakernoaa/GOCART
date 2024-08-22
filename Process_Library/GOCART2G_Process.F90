@@ -396,6 +396,7 @@ CONTAINS
 ! !INPUT PARAMETERS:
    real, intent(in) :: Lc
    real, intent(in) :: lai
+   real, intent(in) :: gvf
    real, intent(in) :: thresh
 ! LOCAL VARIABLES:
    real            :: frac_bare       ! Fraction of bare surface
